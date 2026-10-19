@@ -1,0 +1,48 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1791956154,
+        "narHash": "sha256-jBYGPi4udQ9uo4KQp9m2J0546nJVQitG15gvZSaVVAs=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "55bfb4d7437bd4e09ab7cba58a43bd68eb310044",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "odin-overlay": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1792189975,
+        "narHash": "sha256-kYOnyMlYyzRNf+TeGi5P6Le0ehaJWS7IBX7zY+jiv+M=",
+        "owner": "couchpotato007",
+        "repo": "odin-overlay",
+        "rev": "3cd92e85cc17cd40b38b59bb4767805f6efeffd9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "couchpotato007",
+        "repo": "odin-overlay",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "odin-overlay": "odin-overlay"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

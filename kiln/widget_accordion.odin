@@ -13,89 +13,75 @@ close_two :: proc() {
 @(private = "file")
 g_accordion_open: map[u32]bool
 
-// Appearance of an accordion section. Create it with `style_accordion`.
-AccordionConfig :: struct {
-	id:           clay.ElementId, // ID of the clickable header
-	box:          clay.ElementDeclaration, // outer container (background, border, radius)
-	header:       clay.ElementDeclaration, // header row layout
-	content:      clay.ElementDeclaration, // layout of the content area (padding is dropped while closed)
-	text:         clay.TextElementConfig, // title
-	arrow_color:  clay.Color,
-	header_hover: clay.Color, // header background while hovered (faded in)
-	default_open: bool, // initial state, afterwards the widget remembers the user's choice
-}
-
-// Accordion look from the current theme: a bordered card with a clickable header.
-style_accordion :: proc(id: clay.ElementId, default_open := false) -> AccordionConfig {
+// Declares a collapsible section (bordered card with a clickable header).
+// Clicking the header toggles it; `default_open` is only the initial state, afterwards the
+// widget remembers the user's choice.
+// Returns the open state, so use it like `clay.UI` and put the content into the block:
+//
+//   if kiln.accordion("Title") {
+//       kiln.label("Only visible while open")
+//   }
+//
+// Without `id` the ID is derived from the title, so equal titles in the same parent need an `id`.
+@(deferred_none = close_two)
+accordion :: proc(title: string, default_open := false, id := clay.ElementId{}) -> bool {
 	c := current_theme
-	return {
-		id = id,
-		box = {
-			layout = {layoutDirection = .TopToBottom, sizing = {clay.SizingGrow(), clay.SizingFit()}},
+	eid := resolve_id(id, title)
+
+	open, known := g_accordion_open[eid.id]
+	if !known {open = default_open}
+
+	clay._OpenElement()
+	clay.ConfigureOpenElement(
+		{
+			layout = {
+				layoutDirection = .TopToBottom,
+				sizing = {clay.SizingGrow(), clay.SizingFit()},
+			},
 			backgroundColor = c.surface_0,
 			cornerRadius = radius(.MD),
 			border = border_box(c.border),
 		},
-		header = {
-			layout = {
-				sizing = {clay.SizingGrow(), clay.SizingFit()},
-				padding = pad_xy(.MD, .SM),
-				childGap = sp(.SM),
-				childAlignment = {y = .Center},
-			},
-		},
-		content = {
-			layout = {
-				layoutDirection = .TopToBottom,
-				sizing = {clay.SizingGrow(), clay.SizingFit()},
-				padding = pad_xy(.MD, .SM),
-				childGap = sp(.SM),
-			},
-		},
-		text = text_style(.Body, c.text),
-		arrow_color = c.text_muted,
-		header_hover = c.surface_1,
-		default_open = default_open,
-	}
-}
+	)
 
-// Declares a collapsible section. Clicking the header toggles it.
-// Returns the open state, so use it like `clay.UI` and put the content into the block:
-//
-//   if kiln.accordion("Title", kiln.style_accordion(kiln.id_local("acc"))) {
-//       kiln.label("Only visible while open")
-//   }
-@(deferred_none = close_two)
-accordion :: proc(title: string, cfg: AccordionConfig) -> bool {
-	open, known := g_accordion_open[cfg.id.id]
-	if !known {open = cfg.default_open}
-
-	clay._OpenElement()
-	clay.ConfigureOpenElement(cfg.box)
-
-	s := interact(cfg.id)
+	s := interact(eid)
 	if s.clicked {open = !open}
-	g_accordion_open[cfg.id.id] = open
-	h := anim(cfg.id, 0, s.hovered ? 1 : 0)
+	g_accordion_open[eid.id] = open
+	h := anim(eid, 0, s.hovered ? 1 : 0)
 
 	// Keep the header corners in line with the outer border radius.
-	r := cfg.box.cornerRadius.topLeft
-	hdr := cfg.header
-	hdr.backgroundColor = color_lerp(color_alpha(cfg.header_hover, 0), cfg.header_hover, h)
-	hdr.cornerRadius = open ? clay.CornerRadius{topLeft = r, topRight = r} : clay.CornerRadiusAll(r)
+	r := radius(.MD).topLeft
+	hover_bg := color_lerp(color_alpha(c.surface_1, 0), c.surface_1, h)
+	corners := open ? clay.CornerRadius{topLeft = r, topRight = r} : clay.CornerRadiusAll(r)
 
-	if clay.UI(cfg.id)(hdr) {
-		clay.Text(title, cfg.text)
+	if clay.UI(eid)(
+	{
+		layout = {
+			sizing = {clay.SizingGrow(), clay.SizingFit()},
+			padding = pad_xy(.MD, .SM),
+			childGap = sp(.SM),
+			childAlignment = {y = .Center},
+		},
+		backgroundColor = hover_bg,
+		cornerRadius = corners,
+	},
+	) {
+		clay.Text(title, text_style(.Body, c.text))
 		if clay.UI_AutoId()({layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(0)}}}) {}
-		clay.Text(open ? "v" : ">", text_style(.Body, cfg.arrow_color))
+		clay.Text(open ? "v" : ">", text_style(.Body, c.text_muted))
 	}
 
 	// The content container always exists so that the deferred close stays balanced.
 	// While closed it has no padding and no children and therefore takes no space.
-	content := cfg.content
-	if !open {
-		content.layout.padding = {}
-		content.layout.childGap = 0
+	content := clay.ElementDeclaration {
+		layout = {
+			layoutDirection = .TopToBottom,
+			sizing = {clay.SizingGrow(), clay.SizingFit()},
+		},
+	}
+	if open {
+		content.layout.padding = pad_xy(.MD, .SM)
+		content.layout.childGap = sp(.SM)
 	}
 	clay._OpenElement()
 	clay.ConfigureOpenElement(content)

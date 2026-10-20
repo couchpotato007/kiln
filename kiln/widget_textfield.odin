@@ -20,45 +20,9 @@ TextField :: struct {
 	dragging: bool,
 }
 
-TextFieldConfig :: struct {
-	id:               clay.ElementId,
-	box:              clay.ElementDeclaration,
-	text:             clay.TextElementConfig,
-	placeholder:      string,
-	placeholder_text: clay.TextElementConfig,
-	border_focus:     clay.Color,
-	cursor_color:     clay.Color,
-	cursor_width:     f32,
-	selection_color:  clay.Color,
-}
-
 TextFieldResult :: struct {
 	changed:   bool, // the text was edited in this frame
 	submitted: bool, // Enter was pressed in this frame
-}
-
-style_textfield :: proc(id: clay.ElementId, placeholder := "") -> TextFieldConfig {
-	c := current_theme
-	return {
-		id = id,
-		box = {
-			layout = {
-				sizing = {clay.SizingGrow(), size_control_height()},
-				padding = pad_xy(.MD, .None),
-				childAlignment = {y = .Center},
-			},
-			backgroundColor = c.bg_sunken,
-			cornerRadius = radius(.MD),
-			border = border_box(c.border),
-		},
-		text = text_style(.Body, c.text),
-		placeholder = placeholder,
-		placeholder_text = text_style(.Body, c.text_disabled),
-		border_focus = c.primary,
-		cursor_color = c.primary,
-		cursor_width = px(2),
-		selection_color = c.selection,
-	}
 }
 
 text_field_destroy :: proc(tf: ^TextField) {
@@ -78,80 +42,89 @@ text_field_string :: proc(tf: ^TextField) -> string {
 
 // Declares a single-line text field. The state pointer comes first, like in every value widget.
 // The cursor blink uses the frame time of raylib, so no delta time has to be passed in.
-text_field :: proc(tf: ^TextField, cfg: TextFieldConfig) -> TextFieldResult {
-	cfg := cfg
+//
+//   res := kiln.text_field(&m.field, "Name...")
+//
+// Without `id` the ID is derived from the placeholder, so several fields in the same parent
+// need an explicit `id`.
+text_field :: proc(
+	tf: ^TextField,
+	placeholder := "",
+	id := clay.ElementId{},
+) -> TextFieldResult {
+	col := current_theme
+	eid := resolve_id(id, len(placeholder) > 0 ? placeholder : "textfield")
+
+	text_cfg := text_style(.Body, col.text)
+	text_cfg.wrapMode = .None
+	ph_cfg := text_style(.Body, col.text_disabled)
+	ph_cfg.wrapMode = .None
+	pad := pad_xy(.MD, .None)
 
 	tf.blink += rl.GetFrameTime()
-	res := handle_input(tf, &cfg)
+	res := handle_input(tf, eid, pad, text_cfg)
 
 	s := string(tf.buf[:])
-	pad := cfg.box.layout.padding
-	data := clay.GetElementData(cfg.id)
-	cursor_x := measure(s[:tf.cursor], cfg.text)
+	data := clay.GetElementData(eid)
+	cursor_x := measure(s[:tf.cursor], text_cfg)
 
 	if data.found {
 		inner_w := data.boundingBox.width - f32(pad.left) - f32(pad.right)
 		if cursor_x - tf.scroll > inner_w - 2 {tf.scroll = cursor_x - inner_w + 2}
 		if cursor_x - tf.scroll < 0 {tf.scroll = cursor_x}
-		total := measure(s, cfg.text)
+		total := measure(s, text_cfg)
 		tf.scroll = clamp(tf.scroll, 0, max(0, total - inner_w + 2))
 	} else {
 		tf.scroll = 0
 	}
 
-	decl := cfg.box
-	decl.clip = {
-		horizontal  = true,
-		childOffset = {-tf.scroll, 0},
-	}
-	if tf.focused && cfg.border_focus != {} {
-		decl.border.color = cfg.border_focus
-	}
-
-	text_cfg := cfg.text
-	text_cfg.wrapMode = .None
-	ph_cfg := cfg.placeholder_text
-	ph_cfg.wrapMode = .None
-
-	line_h := f32(cfg.text.fontSize)
+	line_h := f32(text_cfg.fontSize)
 	y_off := f32(pad.top)
 	if data.found {
+		// The field centers its content vertically.
 		inner_h := data.boundingBox.height - f32(pad.top) - f32(pad.bottom)
-		#partial switch decl.layout.childAlignment.y {
-		case .Center:
-			y_off += (inner_h - line_h) * 0.5
-		case .Bottom:
-			y_off += inner_h - line_h
-		}
+		y_off += (inner_h - line_h) * 0.5
 	}
 
-	if clay.UI(cfg.id)(decl) {
+	if clay.UI(eid)(
+	{
+		layout = {
+			sizing = {clay.SizingGrow(), size_control_height()},
+			padding = pad,
+			childAlignment = {y = .Center},
+		},
+		backgroundColor = col.bg_sunken,
+		cornerRadius = radius(.MD),
+		border = border_box(tf.focused ? col.primary : col.border),
+		clip = {horizontal = true, childOffset = {-tf.scroll, 0}},
+	},
+	) {
 		if len(s) > 0 {
 			clay.Text(s, text_cfg)
-		} else if len(cfg.placeholder) > 0 {
-			clay.Text(cfg.placeholder, ph_cfg)
+		} else if len(placeholder) > 0 {
+			clay.Text(placeholder, ph_cfg)
 		}
 
 		if tf.focused && has_selection(tf) {
 			lo, hi := sel_range(tf)
-			x0 := measure(s[:lo], cfg.text)
-			x1 := measure(s[:hi], cfg.text)
+			x0 := measure(s[:lo], text_cfg)
+			x1 := measure(s[:hi], text_cfg)
 			if clay.UI()(
 			{
 				layout = {sizing = {clay.SizingFixed(x1 - x0), clay.SizingFixed(line_h)}},
-				backgroundColor = cfg.selection_color,
+				backgroundColor = col.selection,
 				floating = overlay_floating(f32(pad.left) + x0 - tf.scroll, y_off),
 			},
 			) {}
 		}
 
 		if tf.focused && math.mod(tf.blink, 1.06) < 0.53 {
-			w := cfg.cursor_width > 0 ? cfg.cursor_width : 2
-			col := cfg.cursor_color != {} ? cfg.cursor_color : cfg.text.textColor
 			if clay.UI()(
 			{
-				layout = {sizing = {clay.SizingFixed(w), clay.SizingFixed(line_h)}},
-				backgroundColor = col,
+				layout = {
+					sizing = {clay.SizingFixed(border_px() * 2), clay.SizingFixed(line_h)},
+				},
+				backgroundColor = col.primary,
 				floating = overlay_floating(f32(pad.left) + cursor_x - tf.scroll, y_off),
 			},
 			) {}
@@ -261,9 +234,15 @@ key_hit :: proc(k: rl.KeyboardKey) -> bool {
 }
 
 @(private = "file")
-handle_input :: proc(tf: ^TextField, cfg: ^TextFieldConfig) -> (res: TextFieldResult) {
-	pad := cfg.box.layout.padding
-	data := clay.GetElementData(cfg.id)
+handle_input :: proc(
+	tf: ^TextField,
+	id: clay.ElementId,
+	pad: clay.Padding,
+	text: clay.TextElementConfig,
+) -> (
+	res: TextFieldResult,
+) {
+	data := clay.GetElementData(id)
 	s := string(tf.buf[:])
 
 	tf.cursor = clamp(tf.cursor, 0, len(tf.buf))
@@ -283,11 +262,11 @@ handle_input :: proc(tf: ^TextField, cfg: ^TextFieldConfig) -> (res: TextFieldRe
 		local_x := mouse.x - data.boundingBox.x - f32(pad.left) + tf.scroll
 
 		if rl.IsMouseButtonPressed(.LEFT) {
-			if clay.PointerOver(cfg.id) {
+			if clay.PointerOver(id) {
 				tf.focused = true
 				tf.dragging = true
 				tf.blink = 0
-				move_cursor(tf, index_at_x(s, cfg.text, local_x), shift)
+				move_cursor(tf, index_at_x(s, text, local_x), shift)
 			} else {
 				tf.focused = false
 				tf.dragging = false
@@ -295,7 +274,7 @@ handle_input :: proc(tf: ^TextField, cfg: ^TextFieldConfig) -> (res: TextFieldRe
 		}
 		if tf.dragging {
 			if rl.IsMouseButtonDown(.LEFT) {
-				tf.cursor = index_at_x(s, cfg.text, local_x)
+				tf.cursor = index_at_x(s, text, local_x)
 				tf.blink = 0
 			} else {
 				tf.dragging = false
@@ -368,9 +347,9 @@ handle_input :: proc(tf: ^TextField, cfg: ^TextFieldConfig) -> (res: TextFieldRe
 		}
 		if rl.IsKeyPressed(.V) {
 			if clip := rl.GetClipboardText(); clip != nil {
-				text, _ := strings.replace_all(string(clip), "\r", "", context.temp_allocator)
-				text, _ = strings.replace_all(text, "\n", " ", context.temp_allocator)
-				insert_string(tf, text)
+				pasted, _ := strings.replace_all(string(clip), "\r", "", context.temp_allocator)
+				pasted, _ = strings.replace_all(pasted, "\n", " ", context.temp_allocator)
+				insert_string(tf, pasted)
 				res.changed = true
 				tf.blink = 0
 			}

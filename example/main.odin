@@ -16,6 +16,38 @@ Set_Flavor :: struct {
 	flavor: kiln.Flavor,
 }
 
+Set_Look :: struct {
+	look: int,
+}
+
+// Presets that only change the theme's metrics, no widget code is involved.
+Look :: enum {
+	Standard,
+	Eckig,
+	Rund,
+	Kompakt,
+}
+
+LOOK_NAMES := [?]string{"Standard", "Eckig", "Rund", "Kompakt"}
+
+apply_look :: proc(look: Look) {
+	t := kiln.current_theme
+	t.metrics = kiln.default_metrics()
+	switch look {
+	case .Standard:
+	case .Eckig:
+		t.radii = {.None = 0, .SM = 0, .MD = 0, .LG = 0, .Full = 0}
+	case .Rund:
+		t.radii = {.None = 0, .SM = 8, .MD = 16, .LG = 24, .Full = 9999}
+		t.sizes[.LG] = 40
+	case .Kompakt:
+		for s in kiln.Space {t.spacing[s] *= 0.7}
+		t.sizes[.LG] = 28
+		t.font_base = 14
+	}
+	kiln.set_theme(t)
+}
+
 Msg :: union #no_nil {
 	counter.Msg,
 	greeter.Msg,
@@ -27,21 +59,23 @@ Msg :: union #no_nil {
 	overlays.Msg,
 	Tab_Selected,
 	Set_Flavor,
+	Set_Look,
 }
 
 Model :: struct {
-	tab:       int,
-	counter:   counter.Model,
-	greeter:   greeter.Model,
-	todo:      todo.Model,
-	settings:  settings.Model,
-	people:    people.Model,
-	gallery:   gallery.Model,
-	treeview:  treeview.Model,
-	overlays:  overlays.Model,
+	tab:      int,
+	look:     int,
+	counter:  counter.Model,
+	greeter:  greeter.Model,
+	todo:     todo.Model,
+	settings: settings.Model,
+	people:   people.Model,
+	gallery:  gallery.Model,
+	treeview: treeview.Model,
+	overlays: overlays.Model,
 }
 
-tab_names := [?]string{
+tab_names := [?]string {
 	"Zähler",
 	"Begrüßung",
 	"Aufgaben",
@@ -61,7 +95,7 @@ FLAVOR_NAMES := [kiln.Flavor]string {
 
 init :: proc() -> Model {
 	return {
-		tab = 7, // TEMP
+		tab = 0,
 		counter = counter.init(),
 		greeter = greeter.init(),
 		todo = todo.init(),
@@ -95,6 +129,9 @@ update :: proc(m: ^Model, msg: Msg) {
 		m.tab = int(v)
 	case Set_Flavor:
 		kiln.set_flavor(v.flavor)
+	case Set_Look:
+		m.look = v.look
+		apply_look(Look(v.look))
 	}
 }
 
@@ -110,8 +147,14 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 			}
 		}
 
+		if kiln.hstack(.SM) {
+			kiln.label("Stil", .Caption, kiln.current_theme.text_muted)
+			look := m.look
+			if kiln.segmented(&look, LOOK_NAMES[:]) {append(out, Set_Look{look})}
+		}
+
 		tab := m.tab
-		if kiln.tabs(&tab, tab_names[:], kiln.style_tabs(kiln.id("Tabs"))) {
+		if kiln.tabs(&tab, tab_names[:]) {
 			append(out, Tab_Selected(tab))
 		}
 

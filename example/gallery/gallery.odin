@@ -5,9 +5,9 @@ import "lib:kiln"
 import rl "vendor:raylib"
 
 Model :: struct {
-	texture:     rl.Texture2D,
+	texture:      rl.Texture2D,
 	have_texture: bool,
-	favorites:   int,
+	favorites:    int,
 }
 
 Add_Favorite :: struct {}
@@ -51,10 +51,8 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 				kiln.badge("Fehler", .Danger)
 			}
 			if kiln.hstack(.SM) {
-				dot := kiln.style_badge(kiln.id_local("status"), "Online", .Primary)
-				dot.dot = true
-				kiln.badge_cfg(dot)
-				kiln.badge("3", .Info, id = kiln.id_local("count"))
+				kiln.badge("Online", .Primary, dot = true)
+				kiln.badge("3", .Info)
 				kiln.badge("99+", .Danger)
 			}
 		}
@@ -64,7 +62,7 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 	if kiln.card() {
 		kiln.label("Ladeanzeige", .Subtitle)
 		if kiln.hstack(.SM) {
-			kiln.spinner(kiln.style_spinner(kiln.id_local("spin")))
+			kiln.spinner()
 			kiln.label("Wird geladen ...", .Body, muted)
 		}
 		kiln.separator()
@@ -91,21 +89,20 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 		if kiln.hstack(.SM) {
 			speichern := kiln.id_local("save")
 			if kiln.button("Speichern", .Secondary, id = speichern) {}
-			kiln.tooltip(kiln.style_tooltip(speichern, "Strg+S"))
+			kiln.tooltip(speichern, "Strg+S")
 
 			laden := kiln.id_local("load")
 			if kiln.button("Neu laden", .Secondary, id = laden) {}
-			kiln.tooltip(kiln.style_tooltip(laden, "Strg+R"))
+			kiln.tooltip(laden, "Strg+R")
 
 			fav := kiln.id_local("fav")
-			fav_cfg := kiln.style_button(fav, fmt.tprintf("Favoriten (%d)", m.favorites))
-			if kiln.button_cfg(fav_cfg) {}
-			kiln.tooltip(kiln.style_tooltip(fav, "Zu Favoriten hinzufügen"))
+			if kiln.button(fmt.tprintf("Favoriten (%d)", m.favorites), id = fav) {}
+			kiln.tooltip(fav, "Zu Favoriten hinzufügen")
 		}
 		if kiln.hstack(.SM) {
 			kiln.spacer()
-			if kiln.button("Plus", .Ghost, id = kiln.id_local("plus")) {append(out, Add_Favorite{})}
-			if kiln.button("Minus", .Ghost, id = kiln.id_local("minus")) {append(out, Remove_Favorite{})}
+			if kiln.button("Plus", .Ghost) {append(out, Add_Favorite{})}
+			if kiln.button("Minus", .Ghost) {append(out, Remove_Favorite{})}
 		}
 	}
 }

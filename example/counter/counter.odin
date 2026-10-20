@@ -44,7 +44,7 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 		kiln.label(fmt.tprintf("Zähler: %d", m.value), .Subtitle)
 
 		step := m.step
-		if kiln.slider(&step, 1, 10, kiln.style_slider(kiln.id_local("step"))) {
+		if kiln.slider(&step, 1, 10) {
 			append(out, Set_Step{step = step})
 		}
 		kiln.label(fmt.tprintf("Step: %d", step))

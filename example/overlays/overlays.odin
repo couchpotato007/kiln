@@ -15,10 +15,10 @@ CONTEXT_ITEMS := [?]kiln.MenuItem {
 }
 
 Model :: struct {
-	mode:          int,
-	confirm_open:  bool,
-	deleted:       bool,
-	last_action:   string,
+	mode:         int,
+	confirm_open: bool,
+	deleted:      bool,
+	last_action:  string,
 }
 
 Set_Mode :: struct {
@@ -67,7 +67,7 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 	if kiln.card() {
 		kiln.label("Ansichtsmodus", .Subtitle)
 		mode := m.mode
-		if kiln.segmented(&mode, MODE_NAMES[:], kiln.style_segmented(kiln.id_local("mode"))) {
+		if kiln.segmented(&mode, MODE_NAMES[:]) {
 			append(out, Set_Mode{mode})
 		}
 		kiln.label(fmt.tprintf("Modus: %s", MODE_NAMES[m.mode]), .Caption, muted)
@@ -92,8 +92,8 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 
 		row_id := kiln.id_local("row")
 		if kiln.button("projekt.odin", .Secondary, id = row_id) {}
-		kiln.tooltip(kiln.style_tooltip(row_id, "Rechtsklick öffnet das Kontextmenü"))
-		if i, ok := kiln.context_menu(CONTEXT_ITEMS[:], kiln.style_context_menu(row_id)); ok {
+		kiln.tooltip(row_id, "Rechtsklick öffnet das Kontextmenü")
+		if i, ok := kiln.context_menu(CONTEXT_ITEMS[:], row_id); ok {
 			append(out, Context_Action{i})
 		}
 
@@ -103,7 +103,7 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 	}
 
 	// Modal is declared last so it floats above everything else in this view.
-	if kiln.modal("Eintrag löschen?", &m.confirm_open, kiln.style_modal(kiln.id("confirm"))) {
+	if kiln.modal("Eintrag löschen?", &m.confirm_open) {
 		kiln.label("Der Eintrag wird dauerhaft entfernt.", .Body, muted)
 		kiln.label("Dieser Schritt kann nicht rückgängig gemacht werden.", .Caption, muted)
 		if kiln.hstack(.SM) {

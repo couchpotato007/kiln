@@ -72,17 +72,14 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 
 	if kiln.card() {
 		if kiln.hstack(.SM) {
-			res := kiln.text_field(
-				&m.field,
-				kiln.style_textfield(kiln.id_local("new"), "Neue Aufgabe..."),
-			)
+			res := kiln.text_field(&m.field, "Neue Aufgabe...")
 			if res.submitted {append(out, Add{})}
 
 			if kiln.button("Hinzufügen", disabled = input_empty) {append(out, Add{})}
 		}
 
 		frac: f32 = len(m.items) > 0 ? f32(done) / f32(len(m.items)) : 0
-		kiln.progress(frac, kiln.style_progress(kiln.id_local("progress")))
+		kiln.progress(frac)
 		kiln.label(
 			fmt.tprintf("%d von %d erledigt", done, len(m.items)),
 			.Caption,
@@ -97,9 +94,9 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 			for it, i in m.items {
 				if kiln.hstack(.SM) {
 					checked := it.done
-					cb := kiln.style_checkbox(kiln.id_local("done", u32(i)), it.text)
-					if it.done {cb.text.textColor = kiln.current_theme.text_disabled}
-					if kiln.checkbox(&checked, cb) {append(out, Toggle{i})}
+					if kiln.checkbox(&checked, it.text, id = kiln.id_local("done", u32(i))) {
+						append(out, Toggle{i})
+					}
 
 					kiln.spacer()
 					if kiln.button("x", .Ghost, id = kiln.id_local("del", u32(i))) {

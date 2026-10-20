@@ -83,8 +83,7 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 		if kiln.hstack(.SM) {
 			kiln.label("Personen", .Subtitle)
 			kiln.spacer()
-			cfg := kiln.style_menu(kiln.id_local("actions"), "Aktionen", !has_selection)
-			if i, ok := kiln.menu(MENU_ITEMS[:], cfg); ok {
+			if i, ok := kiln.menu(MENU_ITEMS[:], "Aktionen", !has_selection); ok {
 				append(out, Menu_Action{i})
 			}
 		}
@@ -96,7 +95,7 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 		}
 
 		sel := m.selected
-		if kiln.table(&sel, COLUMNS[:], rows, kiln.style_table(kiln.id_local("table"))) {
+		if kiln.table(&sel, COLUMNS[:], rows) {
 			append(out, Select_Row{sel})
 		}
 

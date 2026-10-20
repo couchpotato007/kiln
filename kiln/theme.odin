@@ -6,16 +6,114 @@ import clay "lib:kiln/clay-odin"
 import rl "vendor:raylib"
 
 
-// Semantic color slots used by all widgets.
-// Use `catppuccin` to get a preset, or fill it manually and pass it to `set_theme`.
-Theme :: struct {
+// Color slots used by all widgets.
+Colors :: struct {
 	bg, bg_sunken:                                      clay.Color, // window background / inset areas (inputs)
 	surface_0, surface_1, surface_2:                    clay.Color, // raised surfaces, from subtle to strong
 	border, border_strong:                              clay.Color,
 	text, text_muted, text_disabled:                    clay.Color,
 	primary, primary_hover, primary_active, on_primary: clay.Color, // on_primary: text/icons drawn on primary
-	secondary, danger:                                  clay.Color,
+	secondary:                                          clay.Color,
+	danger, danger_hover, danger_active:                clay.Color,
 	selection:                                          clay.Color, // text selection highlight (semi-transparent)
+}
+
+// Named spacing steps (padding, gaps). Values live in `Metrics.spacing`.
+Space :: enum {
+	None,
+	XS,
+	SM,
+	MD,
+	LG,
+	XL,
+}
+
+// Named corner radius steps. Values live in `Metrics.radii`.
+Radius :: enum {
+	None,
+	SM,
+	MD,
+	LG,
+	Full,
+}
+
+// Named element sizes. Values live in `Metrics.sizes`. Widgets use them like this:
+//   XS  slider track thickness
+//   SM  progress bar thickness, badge dot, spinner dots
+//   MD  checkbox / radio, slider knob, tree indent and arrow column
+//   LG  control height (button, text field, select, slider)
+//   XL  dialog width (modal)
+Size :: enum {
+	XS,
+	SM,
+	MD,
+	LG,
+	XL,
+}
+
+// Typographic roles. Each role has its own font slot and size (see `font_size`).
+FontRole :: enum {
+	Caption,
+	Body,
+	Subtitle,
+	Title,
+	Headline,
+}
+
+FontFace :: enum {
+	Regular,
+	Bold,
+}
+
+// All dimensions of the UI. Everything is in unscaled units; the UI scale (DPI, zoom)
+// is applied on top by `px`/`sp`/`radius`/`size_px`. Widgets have no metrics of their own:
+// they only reference these named steps, so changing a value here changes every widget.
+Metrics :: struct {
+	spacing:       [Space]f32, // padding and gaps
+	radii:         [Radius]f32, // corner radii, `.Full` is not scaled (pill shape)
+	sizes:         [Size]f32, // element sizes, see `Size`
+	border_width:  f32, // outline of cards, inputs, dividers; cursor and tab underline use twice this
+	font_base:     f32, // font size of `.Body`
+	font_ratio:    f32, // modular scale factor between two neighbouring font roles
+	font_faces:    [FontRole]FontFace, // which font file each role uses
+	anim_speed:    f32, // rate per second of hover/toggle fades
+	tooltip_delay: f32, // seconds of hover before a tooltip shows
+	spinner_speed: f32, // spinner pulses per second
+}
+
+// The complete look of the UI: colors plus metrics. The fields of both parts can be
+// accessed directly, e.g. `theme.primary` and `theme.radii[.MD]`.
+//
+//   t := kiln.catppuccin(.Mocha)
+//   t.radii[.MD] = 2
+//   t.sizes[.LG] = 40
+//   t.spacing[.MD] = 16
+//   kiln.set_theme(t)
+Theme :: struct {
+	using colors:  Colors,
+	using metrics: Metrics,
+}
+
+// The default metrics: 4px-based spacing, 36px controls, 16px base font.
+default_metrics :: proc() -> Metrics {
+	return {
+		spacing = {.None = 0, .XS = 4, .SM = 8, .MD = 12, .LG = 16, .XL = 24},
+		radii = {.None = 0, .SM = 4, .MD = 8, .LG = 14, .Full = 9999},
+		sizes = {.XS = 6, .SM = 8, .MD = 18, .LG = 36, .XL = 420},
+		border_width = 1,
+		font_base = 16,
+		font_ratio = 1.25,
+		font_faces = {
+			.Caption = .Regular,
+			.Body = .Regular,
+			.Subtitle = .Bold,
+			.Title = .Bold,
+			.Headline = .Bold,
+		},
+		anim_speed = 14,
+		tooltip_delay = 0.4,
+		spinner_speed = 1.5,
+	}
 }
 
 // Catppuccin color schemes. Mocha/Macchiato/Frappe are dark, Latte is light.
@@ -106,9 +204,9 @@ color_alpha :: proc(col: clay.Color, alpha: f32) -> clay.Color {
 	return r
 }
 
-// Builds a complete `Theme` from a Catppuccin flavor. Hover/active colors of the
-// primary color are derived by mixing it with the text/background color.
-catppuccin :: proc(flavor: Flavor) -> Theme {
+// Builds the color part from a Catppuccin flavor. Hover/active colors of the
+// primary and danger color are derived by mixing them with the text/background color.
+catppuccin_colors :: proc(flavor: Flavor) -> Colors {
 	p := PALETTES[flavor]
 	return {
 		bg = p.base,
@@ -127,11 +225,18 @@ catppuccin :: proc(flavor: Flavor) -> Theme {
 		on_primary = p.base,
 		secondary = p.blue,
 		danger = p.red,
+		danger_hover = color_mix(p.red, p.text, 0.12),
+		danger_active = color_mix(p.red, p.base, 0.2),
 		selection = color_alpha(p.blue, 0.35),
 	}
 }
 
-// The active theme. All `style_*` procs of the widgets read their default colors from here.
+// Builds a complete `Theme` from a Catppuccin flavor with the default metrics.
+catppuccin :: proc(flavor: Flavor) -> Theme {
+	return {colors = catppuccin_colors(flavor), metrics = default_metrics()}
+}
+
+// The active theme. All widgets read their colors and dimensions from here.
 current_theme: Theme
 current_flavor: Flavor
 g_fonts: ThemeFonts
@@ -142,88 +247,21 @@ init_theme :: proc(flavor: Flavor, fonts: ThemeFonts) {
 	current_theme = catppuccin(flavor)
 	current_flavor = flavor
 	g_fonts = fonts
-	g_scale.effective = 0
+	g_font_state = {}
 }
 
-// Switches to another Catppuccin flavor at runtime. Takes effect on the next widget declaration.
+// Switches the colors to another Catppuccin flavor at runtime. The metrics stay as they are.
+// Takes effect on the next widget declaration.
 set_flavor :: proc(flavor: Flavor) {
-	current_theme = catppuccin(flavor)
+	current_theme.colors = catppuccin_colors(flavor)
 	current_flavor = flavor
 }
 
-// Sets a custom theme, e.g. a preset with a few colors overridden.
+// Sets a custom theme (colors and metrics), e.g. a preset with a few values overridden.
+// Changes of the font metrics reload the fonts in the next `begin_frame`.
 set_theme :: proc(theme: Theme) {
 	current_theme = theme
 }
-
-
-// Named spacing steps (padding, gaps). Values are in `SPACING` and scaled by `sp`/`px`.
-Space :: enum {
-	None,
-	XS,
-	SM,
-	MD,
-	LG,
-	XL,
-}
-
-// Named corner radius steps. Values are in `RADIUS`.
-Radius :: enum {
-	None,
-	SM,
-	MD,
-	LG,
-	Full,
-}
-
-// Typographic roles. Each role has its own font slot and size (see `font_size`).
-FontRole :: enum {
-	Caption,
-	Body,
-	Subtitle,
-	Title,
-	Headline,
-}
-
-FontFace :: enum {
-	Regular,
-	Bold,
-}
-
-// Spacing in unscaled units, indexed by `Space`.
-SPACING := [Space]f32 {
-	.None = 0,
-	.XS   = 4,
-	.SM   = 8,
-	.MD   = 12,
-	.LG   = 16,
-	.XL   = 24,
-}
-// Corner radii in unscaled units, indexed by `Radius`. `.Full` is not scaled (pill shape).
-RADIUS := [Radius]f32 {
-	.None = 0,
-	.SM   = 4,
-	.MD   = 8,
-	.LG   = 14,
-	.Full = 9999,
-}
-// Which font file each role uses.
-FONT_FACE := [FontRole]FontFace {
-	.Caption  = .Regular,
-	.Body     = .Regular,
-	.Subtitle = .Bold,
-	.Title    = .Bold,
-	.Headline = .Bold,
-}
-
-// Unscaled border width.
-BORDER_WIDTH: f32 : 1
-// Unscaled height shared by buttons, text fields, selects and sliders.
-CONTROL_HEIGHT: f32 : 36
-// Font size of `.Body` in unscaled units; other roles follow `FONT_RATIO`.
-FONT_BASE: f32 : 16
-// Modular scale factor between two neighbouring font roles.
-FONT_RATIO: f32 : 1.25
 
 
 // Paths to the TTF files used for `FontFace.Regular` and `FontFace.Bold`.
@@ -253,13 +291,23 @@ g_scale := UiScale {
 	font_oversample = 2,
 }
 
+// Everything the loaded fonts depend on. If it changes, the fonts are reloaded.
+@(private = "file")
+FontState :: struct {
+	scale, base, ratio: f32,
+	faces:              [FontRole]FontFace,
+}
+
+@(private = "file")
+g_font_state: FontState
+
 // Sets the manual zoom factor (clamped to 0.5..4), e.g. for Ctrl +/- shortcuts.
 set_zoom :: proc(zoom: f32) {
 	g_scale.user = clamp(zoom, 0.5, 4)
 }
 
-// Recomputes the effective UI scale and reloads the fonts if it changed.
-// Call once per frame before building the layout.
+// Recomputes the effective UI scale and reloads the fonts if the scale or the theme's
+// font metrics changed. Call once per frame before building the layout.
 begin_frame :: proc() {
 	s := g_scale.user
 	if g_scale.use_dpi {
@@ -272,8 +320,16 @@ begin_frame :: proc() {
 		}
 		s *= clamp(fit, g_scale.fit_min, g_scale.fit_max)
 	}
-	if abs(s - g_scale.effective) > 0.001 {
-		g_scale.effective = s
+	g_scale.effective = s
+
+	want := FontState {
+		scale = s,
+		base  = current_theme.font_base,
+		ratio = current_theme.font_ratio,
+		faces = current_theme.font_faces,
+	}
+	if want != g_font_state {
+		g_font_state = want
 		reload_fonts()
 	}
 }
@@ -308,12 +364,16 @@ reload_fonts :: proc() {
 		if int(id) < len(raylib_fonts) {
 			rl.UnloadFont(raylib_fonts[id].font)
 		}
-		path := FONT_FACE[role] == .Bold ? g_fonts.bold : g_fonts.regular
+		path := current_theme.font_faces[role] == .Bold ? g_fonts.bold : g_fonts.regular
 		load_font(id, font_size(role), path)
 	}
 	clay.ResetMeasureTextCache()
 }
 
+
+// ---------------------------------------------------------------------------
+// Theme metrics -> scaled pixels. Widgets only use these, never raw numbers.
+// ---------------------------------------------------------------------------
 
 // Converts unscaled units to scaled pixels (rounded).
 px :: proc(units: f32) -> f32 {
@@ -327,7 +387,12 @@ px16 :: proc(units: f32) -> u16 {
 
 // Scaled spacing value for use as `childGap`.
 sp :: proc(s: Space) -> u16 {
-	return px16(SPACING[s])
+	return px16(current_theme.spacing[s])
+}
+
+// Scaled spacing value as float, for offsets.
+space_px :: proc(s: Space) -> f32 {
+	return px(current_theme.spacing[s])
 }
 
 // Equal padding on all sides.
@@ -345,27 +410,44 @@ pad_xy :: proc(horizontal, vertical: Space) -> clay.Padding {
 	}
 }
 
+// Scaled corner radius in pixels. `.Full` is not scaled (pill shape).
+radius_px :: proc(r: Radius) -> f32 {
+	v := current_theme.radii[r]
+	return r == .Full ? v : px(v)
+}
+
 // Scaled corner radius for all four corners.
 radius :: proc(r: Radius) -> clay.CornerRadius {
-	v := RADIUS[r]
-	if r == .Full {return clay.CornerRadiusAll(v)}
-	return clay.CornerRadiusAll(px(v))
+	return clay.CornerRadiusAll(radius_px(r))
+}
+
+// Scaled element size in pixels.
+size_px :: proc(s: Size) -> f32 {
+	return px(current_theme.sizes[s])
 }
 
 // Fixed sizing with the standard control height (buttons, inputs, ...).
 size_control_height :: proc() -> clay.SizingAxis {
-	return clay.SizingFixed(px(CONTROL_HEIGHT))
+	return clay.SizingFixed(size_px(.LG))
+}
+
+// Scaled border width in pixels (at least 1 if the theme has a border).
+border_px :: proc() -> f32 {
+	w := current_theme.border_width
+	if w <= 0 {return 0}
+	return max(1, px(w))
 }
 
 // Outer border of the theme's border width in the given color.
 border_box :: proc(color: clay.Color) -> clay.BorderElementConfig {
-	return {color = color, width = clay.BorderOutside(px16(BORDER_WIDTH))}
+	return {color = color, width = clay.BorderOutside(u16(border_px()))}
 }
 
-// Scaled font size in pixels for a role: `FONT_BASE * FONT_RATIO^(role - Body) * scale`.
+// Scaled font size in pixels for a role: `font_base * font_ratio^(role - Body) * scale`.
 font_size :: proc(role: FontRole) -> u16 {
 	exp := f32(int(role) - int(FontRole.Body))
-	return u16(max(1, math.round(FONT_BASE * math.pow(FONT_RATIO, exp) * g_scale.effective)))
+	t := current_theme
+	return u16(max(1, math.round(t.font_base * math.pow(t.font_ratio, exp) * g_scale.effective)))
 }
 
 // Text config (font slot, size, color) for a typographic role.

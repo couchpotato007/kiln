@@ -24,6 +24,15 @@ Interaction :: struct {
 @(private = "file")
 g_active: u32
 
+// Uses the explicit `id` if given, otherwise derives one from `fallback` and the parent element.
+// Widgets that are declared several times in the same parent (loops, identical labels)
+// need an explicit `id = kiln.id_local("name", u32(i))`.
+@(private)
+resolve_id :: proc(id: clay.ElementId, fallback: string) -> clay.ElementId {
+	if id.id != 0 {return id}
+	return id_local(fallback)
+}
+
 // Tracks hover/press/click for an element ID. Call once per frame per widget, before declaring it.
 // A click only counts if the press started on the same element. Disabled widgets never react.
 interact :: proc(id: clay.ElementId, disabled := false) -> (s: Interaction) {
@@ -84,14 +93,16 @@ popup_set :: proc(id: clay.ElementId, open: bool) {
 g_anim: map[u64]f32
 
 // Moves the value stored for (id, slot) exponentially towards `target` and returns it.
-// `slot` (0..255) lets one widget animate several values. `speed` is the rate per second.
+// `slot` (0..255) lets one widget animate several values. `speed` is the rate per second
+// (0 = the theme's `anim_speed`).
 // Call once per slot and frame. On the first call the value jumps straight to `target`
 // so widgets do not animate when they first appear.
-anim :: proc(id: clay.ElementId, slot: u32, target: f32, speed: f32 = 14) -> f32 {
+anim :: proc(id: clay.ElementId, slot: u32, target: f32, speed: f32 = 0) -> f32 {
+	rate := speed > 0 ? speed : current_theme.anim_speed
 	key := u64(id.id) << 8 | u64(slot & 0xFF)
 	v, ok := g_anim[key]
 	if !ok {v = target}
-	v += (target - v) * (1 - math.exp(-speed * rl.GetFrameTime()))
+	v += (target - v) * (1 - math.exp(-rate * rl.GetFrameTime()))
 	if abs(target - v) < 0.001 {v = target}
 	g_anim[key] = v
 	return v

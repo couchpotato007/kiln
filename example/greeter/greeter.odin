@@ -32,10 +32,7 @@ update :: proc(m: ^Model, msg: Msg) {
 
 view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 	if kiln.card() {
-		res := kiln.text_field(
-			&m.field,
-			kiln.style_textfield(kiln.id_local("name"), "Name..."),
-		)
+		res := kiln.text_field(&m.field, "Name...")
 		if res.submitted {append(out, Msg.Submit)}
 
 		if kiln.hstack(.SM) {

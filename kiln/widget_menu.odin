@@ -12,57 +12,29 @@ MenuItem :: struct {
 	separator: bool, // draws a divider line instead of an entry, `label` is ignored
 }
 
-// Appearance of a dropdown menu. Create it with `style_menu`.
-MenuConfig :: struct {
-	trigger:       ButtonConfig, // the button that opens the menu, its ID is the menu's base ID
-	list:          clay.ElementDeclaration, // popup container
-	item:          clay.ElementDeclaration, // one row
-	text:          clay.TextElementConfig,
-	item_hover:    clay.Color,
-	danger_text:   clay.Color,
-	disabled_text: clay.Color,
-	separator:     clay.Color,
-}
-
-// Menu look from the current theme. The trigger is a secondary button with the given label.
-style_menu :: proc(id: clay.ElementId, label: string, disabled := false) -> MenuConfig {
-	c := current_theme
-	return {
-		trigger = style_button(id, label, .Secondary, disabled),
-		list = {
-			layout = {layoutDirection = .TopToBottom, padding = pad_all(.XS)},
-			backgroundColor = c.surface_0,
-			cornerRadius = radius(.MD),
-			border = border_box(c.border_strong),
-		},
-		item = {
-			layout = {
-				sizing = {clay.SizingGrow(), clay.SizingFit()},
-				padding = pad_xy(.MD, .SM),
-			},
-			cornerRadius = radius(.SM),
-		},
-		text = text_style(.Body, c.text),
-		item_hover = c.surface_1,
-		danger_text = c.danger,
-		disabled_text = c.text_disabled,
-		separator = c.border,
-	}
-}
-
-// Declares a menu button. Clicking it opens a floating list below the button; clicking an entry
-// closes the list. Clicking elsewhere or pressing Escape closes it as well.
-// The open state is kept internally, the caller owns no state.
+// Declares a menu button (a secondary button with `label`). Clicking it opens a floating list
+// below the button; clicking an entry closes the list. Clicking elsewhere or pressing Escape
+// closes it as well. The open state is kept internally, the caller owns no state.
 // Returns the index of the clicked entry and true in the frame of the click, otherwise (-1, false):
 //
-//   if i, ok := kiln.menu(items, cfg); ok { ... }
-menu :: proc(items: []MenuItem, cfg: MenuConfig) -> (int, bool) {
+//   if i, ok := kiln.menu(items, "Aktionen"); ok { ... }
+menu :: proc(
+	items: []MenuItem,
+	label: string,
+	disabled := false,
+	id := clay.ElementId{},
+) -> (
+	int,
+	bool,
+) {
 	picked := -1
-	trigger_id := cfg.trigger.id
+	trigger_id := resolve_id(id, label)
 	list_id := clay.ID("menu_list", trigger_id.id)
 
-	if button(cfg.trigger) {popup_set(trigger_id, !popup_is_open(trigger_id))}
-	if cfg.trigger.disabled {popup_set(trigger_id, false)}
+	if button(label, .Secondary, disabled, trigger_id) {
+		popup_set(trigger_id, !popup_is_open(trigger_id))
+	}
+	if disabled {popup_set(trigger_id, false)}
 
 	if popup_is_open(trigger_id) {
 		outside :=
@@ -73,54 +45,81 @@ menu :: proc(items: []MenuItem, cfg: MenuConfig) -> (int, bool) {
 	}
 
 	if popup_is_open(trigger_id) {
-		// The popup is attached to the trigger by ID and at least as wide as the trigger.
-		data := clay.GetElementData(trigger_id)
-		list := cfg.list
-		list.layout.sizing.width = clay.SizingFit({min = data.found ? data.boundingBox.width : 0})
-		list.floating = {
-			attachTo           = .ElementWithId,
-			parentId           = trigger_id.id,
-			attachment         = {element = .LeftTop, parent = .LeftBottom},
-			offset             = {0, px(4)},
-			zIndex             = 100,
+		picked = menu_list(items, trigger_id, list_id, "menu_item", 100)
+		if picked >= 0 {popup_set(trigger_id, false)}
+	}
+	return picked, picked >= 0
+}
+
+// Floating list attached below `anchor`, at least as wide as the anchor. Shared by `menu` and
+// `context_menu`. Returns the clicked index or -1.
+@(private)
+menu_list :: proc(
+	items: []MenuItem,
+	anchor, list_id: clay.ElementId,
+	item_prefix: string,
+	z: i16,
+) -> int {
+	c := current_theme
+	picked := -1
+	data := clay.GetElementData(anchor)
+
+	if clay.UI(list_id)(
+	{
+		layout = {
+			layoutDirection = .TopToBottom,
+			sizing = {width = clay.SizingFit({min = data.found ? data.boundingBox.width : 0})},
+			padding = pad_all(.XS),
+		},
+		backgroundColor = c.surface_0,
+		cornerRadius = radius(.MD),
+		border = border_box(c.border_strong),
+		floating = {
+			attachTo = .ElementWithId,
+			parentId = anchor.id,
+			attachment = {element = .LeftTop, parent = .LeftBottom},
+			offset = {0, space_px(.XS)},
+			zIndex = z,
 			pointerCaptureMode = .Capture,
-		}
-
-		if clay.UI(list_id)(list) {
-			for it, i in items {
-				if it.separator {
-					if clay.UI_AutoId()(
-					{
-						layout = {
-							sizing = {
-								clay.SizingGrow(),
-								clay.SizingFixed(px(BORDER_WIDTH)),
-							},
-						},
-						backgroundColor = cfg.separator,
+		},
+	},
+	) {
+		for it, i in items {
+			if it.separator {
+				if clay.UI_AutoId()(
+				{
+					layout = {
+						sizing = {clay.SizingGrow(), clay.SizingFixed(border_px())},
 					},
-					) {}
-					continue
-				}
+					backgroundColor = c.border,
+				},
+				) {}
+				continue
+			}
 
-				item_id := clay.ID("menu_item", trigger_id.id * 1000 + u32(i))
-				s := interact(item_id, it.disabled)
-				if s.clicked {
-					picked = i
-					popup_set(trigger_id, false)
-				}
+			item_id := clay.ID(item_prefix, anchor.id * 1000 + u32(i))
+			s := interact(item_id, it.disabled)
+			if s.clicked {picked = i}
 
-				decl := cfg.item
-				if s.hovered {decl.backgroundColor = cfg.item_hover}
-				text := cfg.text
-				if it.danger {text.textColor = cfg.danger_text}
-				if it.disabled {text.textColor = cfg.disabled_text}
+			bg: clay.Color
+			if s.hovered {bg = c.surface_1}
+			text_color := c.text
+			if it.danger {text_color = c.danger}
+			if it.disabled {text_color = c.text_disabled}
 
-				if clay.UI(item_id)(decl) {
-					clay.Text(it.label, text)
-				}
+			if clay.UI(item_id)(
+			{
+				layout = {
+					sizing = {clay.SizingGrow(), clay.SizingFit()},
+					padding = pad_xy(.MD, .SM),
+				},
+				backgroundColor = bg,
+				cornerRadius = radius(.SM),
+			},
+			) {
+				clay.Text(it.label, text_style(.Body, text_color))
 			}
 		}
 	}
-	return picked, picked >= 0
+	return picked
 }

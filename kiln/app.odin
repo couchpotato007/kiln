@@ -38,6 +38,9 @@ on_clay_error :: proc "c" (e: clay.ErrorData) {
 	fmt.eprintln("clay:", e.errorType, string(e.errorText.chars[:e.errorText.length]))
 }
 
+// Opens the window and runs the app. The look comes from `theme` if given, otherwise from
+// the Catppuccin `flavor` with the default metrics. It can be changed at any time with
+// `set_theme` / `set_flavor`.
 run :: proc(
 	a: App($Model, $Msg),
 	title: cstring = "App",
@@ -49,6 +52,7 @@ run :: proc(
 		bold = "resources/Iosevka-SemiBold.ttf",
 	},
 	padding := Space.LG,
+	theme: Maybe(Theme) = nil,
 ) {
 	rl.SetConfigFlags({.VSYNC_HINT, .WINDOW_RESIZABLE, .MSAA_4X_HINT})
 	rl.InitWindow(width, height, title)
@@ -64,6 +68,7 @@ run :: proc(
 	)
 	clay.SetMeasureTextFunction(measure_text, nil)
 	init_theme(flavor, fonts)
+	if t, ok := theme.?; ok {set_theme(t)}
 
 	model := a.init()
 	debug := false

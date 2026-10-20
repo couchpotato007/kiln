@@ -68,7 +68,7 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 
 		if kiln.scroll_view(260) {
 			sel := m.selected
-			if kiln.tree(&sel, m.nodes, kiln.style_tree(kiln.id_local("files"))) {
+			if kiln.tree(&sel, m.nodes) {
 				append(out, Select_Node{sel})
 			}
 		}

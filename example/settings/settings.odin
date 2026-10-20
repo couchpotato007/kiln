@@ -74,8 +74,7 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 		if kiln.vstack(.XS) {
 			kiln.label("Sprache", .Caption, muted)
 			lang := m.language
-			cfg := kiln.style_select(kiln.id_local("lang"), "Bitte wählen...")
-			if kiln.select(&lang, LANGUAGES[:], cfg) {
+			if kiln.select(&lang, LANGUAGES[:], "Bitte wählen...") {
 				append(out, Set_Language{lang})
 			}
 		}
@@ -85,25 +84,25 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 			if kiln.hstack(.LG) {
 				for s in Size {
 					size := m.size
-					cfg := kiln.style_radio(kiln.id_local("size", u32(s)), SIZE_LABELS[s])
-					if kiln.radio(&size, s, cfg) {append(out, Set_Size{size})}
+					if kiln.radio(&size, s, SIZE_LABELS[s], id = kiln.id_local("size", u32(s))) {
+						append(out, Set_Size{size})
+					}
 				}
 			}
 		}
 
 		notify := m.notify
-		cb := kiln.style_checkbox(kiln.id_local("notify"), "Benachrichtigungen")
-		if kiln.checkbox(&notify, cb) {append(out, Set_Notify{notify})}
+		if kiln.checkbox(&notify, "Benachrichtigungen") {append(out, Set_Notify{notify})}
 
 		if kiln.vstack(.XS) {
 			kiln.label(fmt.tprintf("Lautstärke: %d%%", m.volume), .Caption, muted)
 			vol := m.volume
-			if kiln.slider(&vol, 0, 100, kiln.style_slider(kiln.id_local("vol"))) {
+			if kiln.slider(&vol, 0, 100) {
 				append(out, Set_Volume{vol})
 			}
 		}
 
-		if kiln.accordion("Erweitert", kiln.style_accordion(kiln.id_local("advanced"))) {
+		if kiln.accordion("Erweitert") {
 			kiln.label("Hier landen seltene Optionen.", .Caption, muted)
 			if kiln.hstack(.SM) {
 				kiln.spacer()

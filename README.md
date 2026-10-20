@@ -1,5 +1,6 @@
 > [!CAUTION]
 > This hole repo is vibecoded
+> The API is utterly garbage
 
 # What is it
 

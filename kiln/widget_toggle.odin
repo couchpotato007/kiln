@@ -1,125 +1,86 @@
 package kiln
 
-// Checkbox and radio share their config and drawing code.
+// Checkbox and radio share their drawing code. Colors and sizes come from the global theme.
 
 import "base:intrinsics"
 import clay "lib:kiln/clay-odin"
 
-ToggleConfig :: struct {
-	id:            clay.ElementId,
-	label:         string,
-	size:          f32, // edge length / diameter in UI units (scaled)
-	round:         bool, // true for radio
-	disabled:      bool,
-	box:           clay.ElementDeclaration, // row (mark + label)
-	mark:          clay.ElementDeclaration, // box / circle in the unchecked state
-	text:          clay.TextElementConfig,
-	checked_bg:    clay.Color,
-	check_color:   clay.Color, // inner square / dot
-	hover_border:  clay.Color,
-	disabled_text: clay.Color,
-}
-
-style_checkbox :: proc(id: clay.ElementId, label: string, disabled := false) -> ToggleConfig {
-	return style_toggle(id, label, false, disabled)
-}
-
-style_radio :: proc(id: clay.ElementId, label: string, disabled := false) -> ToggleConfig {
-	return style_toggle(id, label, true, disabled)
-}
-
 // Toggles `checked` when clicked. Returns true if `checked` changed.
-checkbox :: proc(checked: ^bool, cfg: ToggleConfig) -> bool {
-	s := interact(cfg.id, cfg.disabled)
+//
+//   kiln.checkbox(&notify, "Benachrichtigungen")
+//   kiln.checkbox(&done, item.text, id = kiln.id_local("done", u32(i)))   // in loops
+checkbox :: proc(checked: ^bool, label := "", disabled := false, id := clay.ElementId{}) -> bool {
+	eid := resolve_id(id, len(label) > 0 ? label : "checkbox")
+	s := interact(eid, disabled)
 	changed := false
 	if s.clicked {
 		checked^ = !checked^
 		changed = true
 	}
-	toggle_draw(cfg, checked^, s)
+	toggle_draw(eid, label, false, disabled, checked^, s)
 	return changed
 }
 
 // Sets `selected` to `value` when clicked. Works with enums and integers:
 //
-//   kiln.radio(&size, Size.Large, kiln.style_radio(kiln.id_local("large"), "Large"))
+//   kiln.radio(&size, Size.Large, "Large", id = kiln.id_local("large"))
 //
 // Returns true if `selected` changed.
 radio :: proc(
 	selected: ^$T,
 	value: T,
-	cfg: ToggleConfig,
+	label := "",
+	disabled := false,
+	id := clay.ElementId{},
 ) -> bool where intrinsics.type_is_enum(T) ||
 	intrinsics.type_is_integer(T) {
-	s := interact(cfg.id, cfg.disabled)
+	eid := resolve_id(id, len(label) > 0 ? label : "radio")
+	s := interact(eid, disabled)
 	changed := false
 	if s.clicked && selected^ != value {
 		selected^ = value
 		changed = true
 	}
-	toggle_draw(cfg, selected^ == value, s)
+	toggle_draw(eid, label, true, disabled, selected^ == value, s)
 	return changed
 }
 
-
 @(private = "file")
-style_toggle :: proc(
-	id: clay.ElementId,
+toggle_draw :: proc(
+	eid: clay.ElementId,
 	label: string,
-	round: bool,
-	disabled: bool,
-) -> ToggleConfig {
+	round, disabled, checked: bool,
+	s: Interaction,
+) {
 	c := current_theme
-	size: f32 = 18
-	return {
-		id = id,
-		label = label,
-		size = size,
-		round = round,
-		disabled = disabled,
-		box = {layout = {childGap = sp(.SM), childAlignment = {y = .Center}}},
-		mark = {
-			backgroundColor = c.bg_sunken,
-			cornerRadius = round ? clay.CornerRadiusAll(px(size) / 2) : radius(.SM),
-			border = border_box(c.border_strong),
+	t := anim(eid, 0, checked ? 1 : 0)
+	h := anim(eid, 1, s.hovered ? 1 : 0)
+	size := size_px(.MD)
+
+	mark := clay.ElementDeclaration {
+		layout = {
+			sizing = {clay.SizingFixed(size), clay.SizingFixed(size)},
+			childAlignment = {.Center, .Center},
 		},
-		text = text_style(.Body, c.text),
-		checked_bg = c.primary,
-		check_color = c.on_primary,
-		hover_border = c.primary,
-		disabled_text = c.text_disabled,
+		backgroundColor = color_lerp(c.bg_sunken, c.primary, t),
+		cornerRadius = round ? clay.CornerRadiusAll(size / 2) : radius(.SM),
+		border = border_box(color_lerp(c.border_strong, c.primary, max(t, h))),
 	}
-}
 
-@(private = "file")
-toggle_draw :: proc(cfg: ToggleConfig, checked: bool, s: Interaction) {
-	t := anim(cfg.id, 0, checked ? 1 : 0)
-	h := anim(cfg.id, 1, s.hovered ? 1 : 0)
-	size := px(cfg.size)
-
-	mark := cfg.mark
-	mark.layout.sizing = {clay.SizingFixed(size), clay.SizingFixed(size)}
-	mark.layout.childAlignment = {.Center, .Center}
-	mark.backgroundColor = color_lerp(cfg.mark.backgroundColor, cfg.checked_bg, t)
-	mark.border.color = color_lerp(cfg.mark.border.color, cfg.hover_border, max(t, h))
-
-	text := cfg.text
-	if cfg.disabled {text.textColor = cfg.disabled_text}
-
-	if clay.UI(cfg.id)(cfg.box) {
+	if clay.UI(eid)({layout = {childGap = sp(.SM), childAlignment = {y = .Center}}}) {
 		if clay.UI_AutoId()(mark) {
-			inner := size * (cfg.round ? 0.4 : 0.5) * t
-			corner := cfg.round ? inner / 2 : min(px(RADIUS[.SM]), inner / 2)
+			inner := size * (round ? 0.4 : 0.5) * t
+			corner := round ? inner / 2 : min(radius_px(.SM), inner / 2)
 			if clay.UI_AutoId()(
 			{
 				layout = {sizing = {clay.SizingFixed(inner), clay.SizingFixed(inner)}},
-				backgroundColor = cfg.check_color,
+				backgroundColor = c.on_primary,
 				cornerRadius = clay.CornerRadiusAll(corner),
 			},
 			) {}
 		}
-		if len(cfg.label) > 0 {
-			clay.Text(cfg.label, text)
+		if len(label) > 0 {
+			clay.Text(label, text_style(.Body, disabled ? c.text_disabled : c.text))
 		}
 	}
 }

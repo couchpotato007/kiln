@@ -13,7 +13,7 @@ label :: proc(text: string, role := FontRole.Body, color := clay.Color{}) {
 }
 
 separator :: proc(vertical := false) {
-	w := px(BORDER_WIDTH)
+	w := border_px()
 	sizing :=
 		vertical ? clay.Sizing{clay.SizingFixed(w), clay.SizingGrow()} : clay.Sizing{clay.SizingGrow(), clay.SizingFixed(w)}
 	if clay.UI_AutoId()({layout = {sizing = sizing}, backgroundColor = current_theme.border}) {}
@@ -25,37 +25,26 @@ scroll_clip :: proc(vertical := true, horizontal := false) -> clay.ClipElementCo
 	return {horizontal = horizontal, vertical = vertical, childOffset = clay.GetScrollOffset()}
 }
 
-ProgressConfig :: struct {
-	id:         clay.ElementId,
-	box:        clay.ElementDeclaration, // Track
-	fill_color: clay.Color,
-	speed:      f32, // Glättung des Wertes
-}
-
-style_progress :: proc(id: clay.ElementId) -> ProgressConfig {
+// Fortschrittsbalken, value in [0, 1]. Der Wert wird weich nachgeführt.
+//   kiln.progress(0.4)
+progress :: proc(value: f32, id := clay.ElementId{}) {
 	c := current_theme
-	height: f32 = 8
-	return {
-		id = id,
-		box = {
-			layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(px(height))}},
-			backgroundColor = c.surface_1,
-			cornerRadius = clay.CornerRadiusAll(px(height) / 2),
-		},
-		fill_color = c.primary,
-		speed = 10,
-	}
-}
-
-// value in [0, 1]
-progress :: proc(value: f32, cfg: ProgressConfig) {
-	v := anim(cfg.id, 0, clamp(value, 0, 1), cfg.speed)
-	if clay.UI(cfg.id)(cfg.box) {
+	eid := resolve_id(id, "progress")
+	v := anim(eid, 0, clamp(value, 0, 1))
+	h := size_px(.SM)
+	r := clay.CornerRadiusAll(h / 2)
+	if clay.UI(eid)(
+	{
+		layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(h)}},
+		backgroundColor = c.surface_1,
+		cornerRadius = r,
+	},
+	) {
 		if clay.UI_AutoId()(
 		{
 			layout = {sizing = {clay.SizingPercent(v), clay.SizingGrow()}},
-			backgroundColor = cfg.fill_color,
-			cornerRadius = cfg.box.cornerRadius,
+			backgroundColor = c.primary,
+			cornerRadius = r,
 		},
 		) {}
 	}

@@ -2,13 +2,13 @@ package main
 
 import "counter"
 import "greeter"
-import "people"
-import "settings"
-import "todo"
 import "lib:app"
 import clay "lib:clay-odin"
 import "lib:theme"
 import "lib:widgets"
+import "people"
+import "settings"
+import "todo"
 
 Tab_Selected :: distinct int
 

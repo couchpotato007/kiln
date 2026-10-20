@@ -100,12 +100,7 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 		}
 
 		sel := m.selected
-		if widgets.table(
-			&sel,
-			COLUMNS[:],
-			rows,
-			widgets.style_table(clay.ID_LOCAL("table")),
-		) {
+		if widgets.table(&sel, COLUMNS[:], rows, widgets.style_table(clay.ID_LOCAL("table"))) {
 			append(out, Select_Row{sel})
 		}
 

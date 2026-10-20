@@ -1,11 +1,14 @@
 package main
 
 import "counter"
+import "gallery"
 import "greeter"
 import "lib:kiln"
+import "overlays"
 import "people"
 import "settings"
 import "todo"
+import "treeview"
 
 Tab_Selected :: distinct int
 
@@ -19,20 +22,35 @@ Msg :: union #no_nil {
 	todo.Msg,
 	settings.Msg,
 	people.Msg,
+	gallery.Msg,
+	treeview.Msg,
+	overlays.Msg,
 	Tab_Selected,
 	Set_Flavor,
 }
 
 Model :: struct {
-	tab:      int,
-	counter:  counter.Model,
-	greeter:  greeter.Model,
-	todo:     todo.Model,
-	settings: settings.Model,
-	people:   people.Model,
+	tab:       int,
+	counter:   counter.Model,
+	greeter:   greeter.Model,
+	todo:      todo.Model,
+	settings:  settings.Model,
+	people:    people.Model,
+	gallery:   gallery.Model,
+	treeview:  treeview.Model,
+	overlays:  overlays.Model,
 }
 
-tab_names := [?]string{"Zähler", "Begrüßung", "Aufgaben", "Einstellungen", "Personen"}
+tab_names := [?]string{
+	"Zähler",
+	"Begrüßung",
+	"Aufgaben",
+	"Einstellungen",
+	"Personen",
+	"Galerie",
+	"Dateibaum",
+	"Overlays",
+}
 
 FLAVOR_NAMES := [kiln.Flavor]string {
 	.Mocha     = "Mocha",
@@ -43,11 +61,15 @@ FLAVOR_NAMES := [kiln.Flavor]string {
 
 init :: proc() -> Model {
 	return {
+		tab = 7, // TEMP
 		counter = counter.init(),
 		greeter = greeter.init(),
 		todo = todo.init(),
 		settings = settings.init(),
 		people = people.init(),
+		gallery = gallery.init(),
+		treeview = treeview.init(),
+		overlays = overlays.init(),
 	}
 }
 
@@ -63,6 +85,12 @@ update :: proc(m: ^Model, msg: Msg) {
 		settings.update(&m.settings, v)
 	case people.Msg:
 		people.update(&m.people, v)
+	case gallery.Msg:
+		gallery.update(&m.gallery, v)
+	case treeview.Msg:
+		treeview.update(&m.treeview, v)
+	case overlays.Msg:
+		overlays.update(&m.overlays, v)
 	case Tab_Selected:
 		m.tab = int(v)
 	case Set_Flavor:
@@ -98,6 +126,12 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 			kiln.embed(out, &m.settings, settings.view)
 		case 4:
 			kiln.embed(out, &m.people, people.view)
+		case 5:
+			kiln.embed(out, &m.gallery, gallery.view)
+		case 6:
+			kiln.embed(out, &m.treeview, treeview.view)
+		case 7:
+			kiln.embed(out, &m.overlays, overlays.view)
 		}
 	}
 }

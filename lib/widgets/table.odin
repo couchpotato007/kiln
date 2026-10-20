@@ -13,16 +13,16 @@ TableColumn :: struct {
 
 // Appearance of a table. Create it with `style_table`.
 TableConfig :: struct {
-	id:            clay.ElementId,
-	box:           clay.ElementDeclaration, // outer container (border, radius)
-	header:        clay.ElementDeclaration, // header row
-	row:           clay.ElementDeclaration, // data row
-	cell:          clay.ElementDeclaration, // one cell (padding)
-	header_text:   clay.TextElementConfig,
-	cell_text:     clay.TextElementConfig,
-	stripe:        clay.Color, // background of every second row
-	row_hover:     clay.Color, // only used when the table is selectable
-	row_selected:  clay.Color,
+	id:           clay.ElementId,
+	box:          clay.ElementDeclaration, // outer container (border, radius)
+	header:       clay.ElementDeclaration, // header row
+	row:          clay.ElementDeclaration, // data row
+	cell:         clay.ElementDeclaration, // one cell (padding)
+	header_text:  clay.TextElementConfig,
+	cell_text:    clay.TextElementConfig,
+	stripe:       clay.Color, // background of every second row
+	row_hover:    clay.Color, // only used when the table is selectable
+	row_selected: clay.Color,
 }
 
 // Table look from the current theme: bordered, with a raised header and striped rows.
@@ -58,15 +58,10 @@ style_table :: proc(id: clay.ElementId) -> TableConfig {
 }
 
 // Declares a table of text cells. `rows[i][j]` is the text in row i, column j; missing cells are empty.
-// Pass a pointer as `selected` to make rows clickable: the clicked row index is stored there
-// (use -1 for no selection). With `selected = nil` the table is read-only.
+// Like every value widget it takes the state pointer first: `selected` holds the index of the
+// selected row (-1 = none) and is changed when a row is clicked. Pass `nil` for a read-only table.
 // Returns true in the frame in which the selected row changed.
-table :: proc(
-	columns: []TableColumn,
-	rows: [][]string,
-	cfg: TableConfig,
-	selected: ^int = nil,
-) -> bool {
+table :: proc(selected: ^int, columns: []TableColumn, rows: [][]string, cfg: TableConfig) -> bool {
 	changed := false
 
 	if clay.UI(cfg.id)(cfg.box) {

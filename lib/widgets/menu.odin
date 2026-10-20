@@ -5,11 +5,6 @@ import clay "lib:clay-odin"
 import "lib:theme"
 import rl "vendor:raylib"
 
-// State of a dropdown menu. Owned by the caller.
-Menu :: struct {
-	open: bool,
-}
-
 // One entry of a menu.
 MenuItem :: struct {
 	label:     string,
@@ -58,24 +53,27 @@ style_menu :: proc(id: clay.ElementId, label: string, disabled := false) -> Menu
 
 // Declares a menu button. Clicking it opens a floating list below the button; clicking an entry
 // closes the list. Clicking elsewhere or pressing Escape closes it as well.
-// Returns the index of the clicked entry in this frame, or -1 if none was clicked.
-menu :: proc(m: ^Menu, items: []MenuItem, cfg: MenuConfig) -> int {
+// The open state is kept internally, the caller owns no state.
+// Returns the index of the clicked entry and true in the frame of the click, otherwise (-1, false):
+//
+//   if i, ok := widgets.menu(items, cfg); ok { ... }
+menu :: proc(items: []MenuItem, cfg: MenuConfig) -> (int, bool) {
 	picked := -1
 	trigger_id := cfg.trigger.id
 	list_id := clay.ID("menu_list", trigger_id.id)
 
-	if button(cfg.trigger) {m.open = !m.open}
-	if cfg.trigger.disabled {m.open = false}
+	if button(cfg.trigger) {popup_set(trigger_id, !popup_is_open(trigger_id))}
+	if cfg.trigger.disabled {popup_set(trigger_id, false)}
 
-	if m.open {
+	if popup_is_open(trigger_id) {
 		outside :=
 			rl.IsMouseButtonPressed(.LEFT) &&
 			!clay.PointerOver(trigger_id) &&
 			!clay.PointerOver(list_id)
-		if outside || rl.IsKeyPressed(.ESCAPE) {m.open = false}
+		if outside || rl.IsKeyPressed(.ESCAPE) {popup_set(trigger_id, false)}
 	}
 
-	if m.open {
+	if popup_is_open(trigger_id) {
 		// The popup is attached to the trigger by ID and at least as wide as the trigger.
 		data := clay.GetElementData(trigger_id)
 		list := cfg.list
@@ -110,7 +108,7 @@ menu :: proc(m: ^Menu, items: []MenuItem, cfg: MenuConfig) -> int {
 				s := interact(item_id, it.disabled)
 				if s.clicked {
 					picked = i
-					m.open = false
+					popup_set(trigger_id, false)
 				}
 
 				decl := cfg.item
@@ -125,5 +123,5 @@ menu :: proc(m: ^Menu, items: []MenuItem, cfg: MenuConfig) -> int {
 			}
 		}
 	}
-	return picked
+	return picked, picked >= 0
 }

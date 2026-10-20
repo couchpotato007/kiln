@@ -79,9 +79,32 @@ style_button :: proc(
 	return cfg
 }
 
-// Declares a button and returns true in the frame in which it was clicked.
-// A click requires press and release on the button. The hover color is faded in smoothly.
-button :: proc(cfg: ButtonConfig) -> bool {
+// Two ways to declare a button, both return true in the frame in which it was clicked:
+//
+//   widgets.button("Save")                                  // short form, ID derived from the label
+//   widgets.button("Delete", .Danger, id = clay.ID_LOCAL("del", u32(i)))  // explicit ID, e.g. in loops
+//   widgets.button(widgets.style_button(id, "Save"))        // full control via ButtonConfig
+button :: proc {
+	button_cfg,
+	button_label,
+}
+
+// Short form. Without `id` the ID is derived from the label and the parent element, so two buttons
+// with the same label in the same parent need an explicit `id`.
+button_label :: proc(
+	label: string,
+	variant := ButtonVariant.Primary,
+	disabled := false,
+	id := clay.ElementId{},
+) -> bool {
+	eid := id
+	if eid.id == 0 {eid = clay.ID_LOCAL(label)}
+	return button_cfg(style_button(eid, label, variant, disabled))
+}
+
+// Declares a button from a full config. A click requires press and release on the button.
+// The hover color is faded in smoothly.
+button_cfg :: proc(cfg: ButtonConfig) -> bool {
 	s := interact(cfg.id, cfg.disabled)
 
 	decl := cfg.box

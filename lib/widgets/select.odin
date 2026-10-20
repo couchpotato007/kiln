@@ -5,22 +5,21 @@ import clay "lib:clay-odin"
 import "lib:theme"
 import rl "vendor:raylib"
 
-// Zustand (lebt beim Aufrufer). index < 0 = nichts gewählt.
-Select :: struct {
-	index: int,
-	open:  bool,
-}
+// Selected option index. The zero value (nil) means "nothing selected", so the placeholder is shown.
+// Read it with `if i, ok := sel.?; ok { ... }`. The open/closed state of the list is kept
+// internally, so the value can be copied and written back like any other widget value.
+Select :: Maybe(int)
 
 SelectConfig :: struct {
 	id:                clay.ElementId,
-	box:               clay.ElementDeclaration, // geschlossenes Feld
+	box:               clay.ElementDeclaration, // closed field
 	text:              clay.TextElementConfig,
 	placeholder:       string,
 	placeholder_color: clay.Color,
 	arrow_color:       clay.Color,
-	border_hover:      clay.Color, // Border bei Hover/offen
-	list:              clay.ElementDeclaration, // Popup-Container
-	item:              clay.ElementDeclaration, // eine Zeile im Popup
+	border_hover:      clay.Color, // border while hovered / open
+	list:              clay.ElementDeclaration, // popup container
+	item:              clay.ElementDeclaration, // one row in the popup
 	item_hover:        clay.Color,
 	item_selected:     clay.Color,
 	disabled:          bool,
@@ -67,32 +66,38 @@ style_select :: proc(id: clay.ElementId, placeholder := "", disabled := false) -
 	}
 }
 
-// Gibt true zurück, wenn sich die Auswahl geändert hat.
-select :: proc(sel: ^Select, options: []string, cfg: SelectConfig) -> bool {
+// Returns true if the selection changed. `selected` can be a copy of the model value.
+select :: proc(selected: ^Select, options: []string, cfg: SelectConfig) -> bool {
 	changed := false
 	list_id := clay.ID("select_list", cfg.id.id)
 
 	s := interact(cfg.id, cfg.disabled)
-	if s.clicked {sel.open = !sel.open}
-	if cfg.disabled {sel.open = false}
-	if sel.open {
+	if s.clicked {popup_set(cfg.id, !popup_is_open(cfg.id))}
+	if cfg.disabled {popup_set(cfg.id, false)}
+	if popup_is_open(cfg.id) {
 		outside :=
 			rl.IsMouseButtonPressed(.LEFT) &&
 			!clay.PointerOver(cfg.id) &&
 			!clay.PointerOver(list_id)
-		if outside || rl.IsKeyPressed(.ESCAPE) {sel.open = false}
+		if outside || rl.IsKeyPressed(.ESCAPE) {popup_set(cfg.id, false)}
 	}
+	open := popup_is_open(cfg.id)
 
-	h := anim(cfg.id, 0, (s.hovered || sel.open) ? 1 : 0)
+	h := anim(cfg.id, 0, (s.hovered || open) ? 1 : 0)
 	data := clay.GetElementData(cfg.id)
 
 	box := cfg.box
 	box.border.color = color_lerp(cfg.box.border.color, cfg.border_hover, h)
 
+	current := -1
+	if i, ok := selected^.?; ok && i >= 0 && i < len(options) {
+		current = i
+	}
+
 	text := cfg.text
 	shown := cfg.placeholder
-	if sel.index >= 0 && sel.index < len(options) {
-		shown = options[sel.index]
+	if current >= 0 {
+		shown = options[current]
 	} else {
 		text.textColor = cfg.placeholder_color
 	}
@@ -101,9 +106,9 @@ select :: proc(sel: ^Select, options: []string, cfg: SelectConfig) -> bool {
 	if clay.UI(cfg.id)(box) {
 		clay.Text(shown, text)
 		if clay.UI_AutoId()({layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(0)}}}) {}
-		clay.Text(sel.open ? "^" : "v", theme.text_style(.Body, cfg.arrow_color))
+		clay.Text(open ? "^" : "v", theme.text_style(.Body, cfg.arrow_color))
 
-		if sel.open {
+		if open {
 			list := cfg.list
 			list.layout.sizing.width = clay.SizingFixed(
 				data.found ? data.boundingBox.width : theme.px(200),
@@ -120,12 +125,12 @@ select :: proc(sel: ^Select, options: []string, cfg: SelectConfig) -> bool {
 					item_id := clay.ID("select_item", cfg.id.id * 1000 + u32(i))
 					is := interact(item_id)
 					if is.clicked {
-						sel.index = i
-						sel.open = false
+						selected^ = i
+						popup_set(cfg.id, false)
 						changed = true
 					}
 					item := cfg.item
-					if sel.index == i {item.backgroundColor = cfg.item_selected}
+					if current == i {item.backgroundColor = cfg.item_selected}
 					if is.hovered {item.backgroundColor = cfg.item_hover}
 					if clay.UI(item_id)(item) {
 						clay.Text(opt, cfg.text)

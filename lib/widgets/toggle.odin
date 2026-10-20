@@ -1,21 +1,22 @@
 package widgets
 
-// Checkbox und Radio teilen sich Config und Zeichenlogik.
+// Checkbox and radio share their config and drawing code.
 
+import "base:intrinsics"
 import clay "lib:clay-odin"
 import "lib:theme"
 
 ToggleConfig :: struct {
 	id:            clay.ElementId,
 	label:         string,
-	size:          f32, // Kantenlänge/Durchmesser in UI-Einheiten (wird skaliert)
-	round:         bool, // Radio = true
+	size:          f32, // edge length / diameter in UI units (scaled)
+	round:         bool, // true for radio
 	disabled:      bool,
-	box:           clay.ElementDeclaration, // Zeile (Markierung + Label)
-	mark:          clay.ElementDeclaration, // Kästchen/Kreis im ungewählten Zustand
+	box:           clay.ElementDeclaration, // row (mark + label)
+	mark:          clay.ElementDeclaration, // box / circle in the unchecked state
 	text:          clay.TextElementConfig,
 	checked_bg:    clay.Color,
-	check_color:   clay.Color, // Haken-Quadrat / Punkt
+	check_color:   clay.Color, // inner square / dot
 	hover_border:  clay.Color,
 	disabled_text: clay.Color,
 }
@@ -28,7 +29,7 @@ style_radio :: proc(id: clay.ElementId, label: string, disabled := false) -> Tog
 	return style_toggle(id, label, true, disabled)
 }
 
-// Setzt/entfernt den Haken. Gibt true zurück, wenn sich `checked` geändert hat.
+// Toggles `checked` when clicked. Returns true if `checked` changed.
 checkbox :: proc(checked: ^bool, cfg: ToggleConfig) -> bool {
 	s := interact(cfg.id, cfg.disabled)
 	changed := false
@@ -40,8 +41,17 @@ checkbox :: proc(checked: ^bool, cfg: ToggleConfig) -> bool {
 	return changed
 }
 
-// Wählt `value` aus, wenn angeklickt. Gibt true zurück, wenn sich `selected` geändert hat.
-radio :: proc(selected: ^int, value: int, cfg: ToggleConfig) -> bool {
+// Sets `selected` to `value` when clicked. Works with enums and integers:
+//
+//   widgets.radio(&size, Size.Large, widgets.style_radio(clay.ID_LOCAL("large"), "Large"))
+//
+// Returns true if `selected` changed.
+radio :: proc(
+	selected: ^$T,
+	value: T,
+	cfg: ToggleConfig,
+) -> bool where intrinsics.type_is_enum(T) ||
+	intrinsics.type_is_integer(T) {
 	s := interact(cfg.id, cfg.disabled)
 	changed := false
 	if s.clicked && selected^ != value {

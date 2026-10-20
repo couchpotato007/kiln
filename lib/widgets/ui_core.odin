@@ -3,9 +3,10 @@ package widgets
 // Shared foundations for all widgets:
 //  - interact(): mouse interaction (hover / pressed / held / clicked)
 //  - anim():     per-widget tween for purely visual state (hover fade, toggle, ...)
+//  - popup_*():  which dropdown (select / menu) is currently open
 //
 // Logical state (checked, value, text, ...) is owned by the caller,
-// visual state (animation values) lives here in a map.
+// visual state (animation values, open popup) lives here.
 
 import "core:math"
 import clay "lib:clay-odin"
@@ -51,6 +52,28 @@ interact :: proc(id: clay.ElementId, disabled := false) -> (s: Interaction) {
 		}
 	}
 	return
+}
+
+// ---------------------------------------------------------------------------
+// Popups
+// ---------------------------------------------------------------------------
+
+// Only one popup (select list, menu) can be open at a time, so a single ID is enough.
+// This keeps the open/closed state out of the caller's model.
+@(private = "file")
+g_popup: u32
+
+popup_is_open :: proc(id: clay.ElementId) -> bool {
+	return id.id != 0 && g_popup == id.id
+}
+
+// Opens the popup of `id` (closing any other one) or closes it if it is the open one.
+popup_set :: proc(id: clay.ElementId, open: bool) {
+	if open {
+		g_popup = id.id
+	} else if g_popup == id.id {
+		g_popup = 0
+	}
 }
 
 // ---------------------------------------------------------------------------

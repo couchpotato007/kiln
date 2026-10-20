@@ -10,6 +10,8 @@ import "lib:renderer"
 import "lib:theme"
 import rl "vendor:raylib"
 
+// Editing state of a text field. The zero value is an empty field.
+// The text itself lives in `buf`, read it with `text_field_string`.
 TextField :: struct {
 	buf:      [dynamic]u8,
 	cursor:   int,
@@ -33,8 +35,8 @@ TextFieldConfig :: struct {
 }
 
 TextFieldResult :: struct {
-	changed:   bool,
-	submitted: bool,
+	changed:   bool, // the text was edited in this frame
+	submitted: bool, // Enter was pressed in this frame
 }
 
 style_textfield :: proc(id: clay.ElementId, placeholder := "") -> TextFieldConfig {
@@ -76,10 +78,12 @@ text_field_string :: proc(tf: ^TextField) -> string {
 	return string(tf.buf[:])
 }
 
-text_field :: proc(tf: ^TextField, cfg: TextFieldConfig, dt: f32) -> TextFieldResult {
+// Declares a single-line text field. The state pointer comes first, like in every value widget.
+// The cursor blink uses the frame time of raylib, so no delta time has to be passed in.
+text_field :: proc(tf: ^TextField, cfg: TextFieldConfig) -> TextFieldResult {
 	cfg := cfg
 
-	tf.blink += dt
+	tf.blink += rl.GetFrameTime()
 	res := handle_input(tf, &cfg)
 
 	s := string(tf.buf[:])

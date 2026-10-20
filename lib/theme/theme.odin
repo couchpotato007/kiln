@@ -1,9 +1,9 @@
 package theme
 
 
+import "core:math"
 import clay "lib:clay-odin"
 import "lib:renderer"
-import "core:math"
 import rl "vendor:raylib"
 
 
@@ -134,12 +134,14 @@ theme_catppuccin :: proc(flavor: Flavor) -> Theme {
 
 // The active theme. All `style_*` procs of the widgets read their default colors from here.
 current: Theme
+current_flavor: Flavor
 g_fonts: ThemeFonts
 
 // Selects the initial flavor and the font files (regular and bold TTF).
 // Call once after the window was created. Fonts are loaded in `begin_frame`.
 init :: proc(flavor: Flavor, fonts: ThemeFonts) {
 	current = theme_catppuccin(flavor)
+	current_flavor = flavor
 	g_fonts = fonts
 	g_scale.effective = 0
 }
@@ -147,6 +149,7 @@ init :: proc(flavor: Flavor, fonts: ThemeFonts) {
 // Switches to another Catppuccin flavor at runtime. Takes effect on the next widget declaration.
 set_flavor :: proc(flavor: Flavor) {
 	current = theme_catppuccin(flavor)
+	current_flavor = flavor
 }
 
 // Sets a custom theme, e.g. a preset with a few colors overridden.

@@ -1,5 +1,7 @@
 package widgets
 
+import "base:intrinsics"
+import "core:math"
 
 import clay "lib:clay-odin"
 import "lib:theme"
@@ -7,7 +9,7 @@ import rl "vendor:raylib"
 
 SliderConfig :: struct {
 	id:           clay.ElementId,
-	box:          clay.ElementDeclaration, // Klickfläche (volle Breite)
+	box:          clay.ElementDeclaration, // click area (full width)
 	track_height: f32,
 	knob_size:    f32,
 	track_color:  clay.Color,
@@ -37,24 +39,39 @@ style_slider :: proc(id: clay.ElementId, disabled := false) -> SliderConfig {
 	}
 }
 
-// Ändert `value` im Bereich [lo, hi]. Gibt true zurück, wenn sich der Wert geändert hat.
-slider :: proc(value: ^f32, cfg: SliderConfig, lo := f32(0), hi := f32(1)) -> bool {
+// Changes `value` within [lo, hi]. Works with integers and floats:
+//
+//   widgets.slider(&volume, 0, 100, widgets.style_slider(clay.ID_LOCAL("vol")))
+//
+// Returns true if the value changed.
+slider :: proc(
+	value: ^$T,
+	lo, hi: T,
+	cfg: SliderConfig,
+) -> bool where intrinsics.type_is_integer(T) ||
+	intrinsics.type_is_float(T) {
 	s := interact(cfg.id, cfg.disabled)
 	data := clay.GetElementData(cfg.id)
 	knob := theme.px(cfg.knob_size)
 	changed := false
 
+	flo, fhi := f32(lo), f32(hi)
+
 	if s.held && data.found {
 		w := max(data.boundingBox.width - knob, 1)
 		t := clamp((rl.GetMousePosition().x - data.boundingBox.x - knob * 0.5) / w, 0, 1)
-		nv := lo + t * (hi - lo)
+		raw := flo + t * (fhi - flo)
+		when intrinsics.type_is_integer(T) {
+			raw = math.round(raw)
+		}
+		nv := T(raw)
 		if nv != value^ {
 			value^ = nv
 			changed = true
 		}
 	}
 
-	frac: f32 = hi > lo ? clamp((value^ - lo) / (hi - lo), 0, 1) : 0
+	frac: f32 = fhi > flo ? clamp((f32(value^) - flo) / (fhi - flo), 0, 1) : 0
 	hv := anim(cfg.id, 0, (s.hovered || s.held) ? 1 : 0)
 	width := data.found ? data.boundingBox.width : 0
 	track_r := clay.CornerRadiusAll(theme.px(cfg.track_height) / 2)

@@ -1,7 +1,6 @@
-package widgets
+package kiln
 
-import clay "lib:clay-odin"
-import "lib:theme"
+import clay "lib:kiln/clay-odin"
 
 // Appearance of a tab bar. Create it with `style_tabs`.
 TabsConfig :: struct {
@@ -18,12 +17,12 @@ TabsConfig :: struct {
 
 // Tab bar look from the current theme: muted labels, primary-colored underline on the selected tab.
 style_tabs :: proc(id: clay.ElementId) -> TabsConfig {
-	c := theme.current
+	c := current_theme
 	return {
 		id = id,
 		box = {layout = {layoutDirection = .TopToBottom, sizing = {clay.SizingGrow(), clay.SizingFit()}}},
-		tab = {layout = {padding = theme.pad_xy(.LG, .SM)}},
-		text = theme.text_style(.Body, c.text_muted),
+		tab = {layout = {padding = pad_xy(.LG, .SM)}},
+		text = text_style(.Body, c.text_muted),
 		text_hover = c.text,
 		text_active = c.primary,
 		indicator = c.primary,
@@ -39,7 +38,7 @@ tabs :: proc(selected: ^int, labels: []string, cfg: TabsConfig) -> bool {
 	changed := false
 
 	if clay.UI(cfg.id)(cfg.box) {
-		if clay.UI_AutoId()({layout = {childGap = theme.sp(.XS)}}) {
+		if clay.UI_AutoId()({layout = {childGap = sp(.XS)}}) {
 			for label, i in labels {
 				tab_id := clay.ID("tab", cfg.id.id * 1000 + u32(i))
 				s := interact(tab_id)
@@ -69,11 +68,11 @@ tabs :: proc(selected: ^int, labels: []string, cfg: TabsConfig) -> bool {
 						layout = {
 							sizing = {
 								clay.SizingGrow(),
-								clay.SizingFixed(theme.px(cfg.indicator_height)),
+								clay.SizingFixed(px(cfg.indicator_height)),
 							},
 						},
 						backgroundColor = color_lerp(
-							theme.color_alpha(cfg.indicator, 0),
+							color_alpha(cfg.indicator, 0),
 							cfg.indicator,
 							a,
 						),
@@ -84,7 +83,7 @@ tabs :: proc(selected: ^int, labels: []string, cfg: TabsConfig) -> bool {
 		}
 		if clay.UI_AutoId()(
 		{
-			layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(theme.px(theme.BORDER_WIDTH))}},
+			layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(px(BORDER_WIDTH))}},
 			backgroundColor = cfg.line,
 		},
 		) {}

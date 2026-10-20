@@ -2,9 +2,7 @@ package todo
 
 import "core:fmt"
 import "core:strings"
-import clay "lib:clay-odin"
-import "lib:theme"
-import "lib:widgets"
+import "lib:kiln"
 
 Item :: struct {
 	text: string,
@@ -12,7 +10,7 @@ Item :: struct {
 }
 
 Model :: struct {
-	field: widgets.TextField,
+	field: kiln.TextField,
 	items: [dynamic]Item,
 }
 
@@ -42,10 +40,10 @@ init :: proc() -> Model {
 update :: proc(m: ^Model, msg: Msg) {
 	switch v in msg {
 	case Add:
-		text := strings.trim_space(widgets.text_field_string(&m.field))
+		text := strings.trim_space(kiln.text_field_string(&m.field))
 		if len(text) == 0 {return}
 		append(&m.items, Item{text = strings.clone(text)})
-		widgets.text_field_set(&m.field, "")
+		kiln.text_field_set(&m.field, "")
 	case Toggle:
 		if v.index < len(m.items) {
 			m.items[v.index].done = !m.items[v.index].done
@@ -70,50 +68,50 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 	for it in m.items {
 		if it.done {done += 1}
 	}
-	input_empty := len(strings.trim_space(widgets.text_field_string(&m.field))) == 0
+	input_empty := len(strings.trim_space(kiln.text_field_string(&m.field))) == 0
 
-	if widgets.card() {
-		if widgets.hstack(.SM) {
-			res := widgets.text_field(
+	if kiln.card() {
+		if kiln.hstack(.SM) {
+			res := kiln.text_field(
 				&m.field,
-				widgets.style_textfield(clay.ID_LOCAL("new"), "Neue Aufgabe..."),
+				kiln.style_textfield(kiln.id_local("new"), "Neue Aufgabe..."),
 			)
 			if res.submitted {append(out, Add{})}
 
-			if widgets.button("Hinzufügen", disabled = input_empty) {append(out, Add{})}
+			if kiln.button("Hinzufügen", disabled = input_empty) {append(out, Add{})}
 		}
 
 		frac: f32 = len(m.items) > 0 ? f32(done) / f32(len(m.items)) : 0
-		widgets.progress(frac, widgets.style_progress(clay.ID_LOCAL("progress")))
-		widgets.label(
+		kiln.progress(frac, kiln.style_progress(kiln.id_local("progress")))
+		kiln.label(
 			fmt.tprintf("%d von %d erledigt", done, len(m.items)),
 			.Caption,
-			theme.current.text_muted,
+			kiln.current_theme.text_muted,
 		)
-		widgets.separator()
+		kiln.separator()
 
-		if widgets.scroll_view(240) {
+		if kiln.scroll_view(240) {
 			if len(m.items) == 0 {
-				widgets.label("Nichts zu tun.", .Body, theme.current.text_disabled)
+				kiln.label("Nichts zu tun.", .Body, kiln.current_theme.text_disabled)
 			}
 			for it, i in m.items {
-				if widgets.hstack(.SM) {
+				if kiln.hstack(.SM) {
 					checked := it.done
-					cb := widgets.style_checkbox(clay.ID_LOCAL("done", u32(i)), it.text)
-					if it.done {cb.text.textColor = theme.current.text_disabled}
-					if widgets.checkbox(&checked, cb) {append(out, Toggle{i})}
+					cb := kiln.style_checkbox(kiln.id_local("done", u32(i)), it.text)
+					if it.done {cb.text.textColor = kiln.current_theme.text_disabled}
+					if kiln.checkbox(&checked, cb) {append(out, Toggle{i})}
 
-					widgets.spacer()
-					if widgets.button("x", .Ghost, id = clay.ID_LOCAL("del", u32(i))) {
+					kiln.spacer()
+					if kiln.button("x", .Ghost, id = kiln.id_local("del", u32(i))) {
 						append(out, Remove{i})
 					}
 				}
 			}
 		}
 
-		if widgets.hstack(.SM) {
-			widgets.spacer()
-			if widgets.button("Erledigte entfernen", .Secondary, done == 0) {
+		if kiln.hstack(.SM) {
+			kiln.spacer()
+			if kiln.button("Erledigte entfernen", .Secondary, done == 0) {
 				append(out, Clear_Done{})
 			}
 		}

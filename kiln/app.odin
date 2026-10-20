@@ -1,11 +1,9 @@
-package app
+package kiln
 
 import "base:runtime"
 import "core:c"
 import "core:fmt"
-import clay "lib:clay-odin"
-import "lib:renderer"
-import "lib:theme"
+import clay "lib:kiln/clay-odin"
 import rl "vendor:raylib"
 
 App :: struct($Model, $Msg: typeid) {
@@ -45,12 +43,12 @@ run :: proc(
 	title: cstring = "App",
 	width: i32 = 1024,
 	height: i32 = 768,
-	flavor := theme.Flavor.Mocha,
-	fonts := theme.ThemeFonts {
+	flavor := Flavor.Mocha,
+	fonts := ThemeFonts {
 		regular = "resources/Iosevka-Regular.ttf",
 		bold = "resources/Iosevka-SemiBold.ttf",
 	},
-	padding := theme.Space.LG,
+	padding := Space.LG,
 ) {
 	rl.SetConfigFlags({.VSYNC_HINT, .WINDOW_RESIZABLE, .MSAA_4X_HINT})
 	rl.InitWindow(width, height, title)
@@ -64,8 +62,8 @@ run :: proc(
 		{f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())},
 		{handler = on_clay_error},
 	)
-	clay.SetMeasureTextFunction(renderer.measure_text, nil)
-	theme.init(flavor, fonts)
+	clay.SetMeasureTextFunction(measure_text, nil)
+	init_theme(flavor, fonts)
 
 	model := a.init()
 	debug := false
@@ -87,7 +85,7 @@ run :: proc(
 		)
 		clay.UpdateScrollContainers(false, transmute(clay.Vector2)rl.GetMouseWheelMoveV(), frame)
 		clay.SetLayoutDimensions({f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())})
-		theme.begin_frame()
+		begin_frame()
 
 		if a.tick != nil {a.tick(&model, frame)}
 
@@ -97,9 +95,9 @@ run :: proc(
 		{
 			layout = {
 				sizing = {clay.SizingGrow(), clay.SizingGrow()},
-				padding = theme.pad_all(padding),
+				padding = pad_all(padding),
 			},
-			backgroundColor = theme.current.bg,
+			backgroundColor = current_theme.bg,
 		},
 		) {
 			a.view(&model, &msgs)
@@ -107,7 +105,7 @@ run :: proc(
 		cmds := clay.EndLayout(frame)
 
 		rl.BeginDrawing()
-		renderer.clay_raylib_render(&cmds)
+		clay_raylib_render(&cmds)
 		rl.EndDrawing()
 
 		for msg in msgs {

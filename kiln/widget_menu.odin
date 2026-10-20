@@ -1,8 +1,7 @@
-package widgets
+package kiln
 
 
-import clay "lib:clay-odin"
-import "lib:theme"
+import clay "lib:kiln/clay-odin"
 import rl "vendor:raylib"
 
 // One entry of a menu.
@@ -27,23 +26,23 @@ MenuConfig :: struct {
 
 // Menu look from the current theme. The trigger is a secondary button with the given label.
 style_menu :: proc(id: clay.ElementId, label: string, disabled := false) -> MenuConfig {
-	c := theme.current
+	c := current_theme
 	return {
 		trigger = style_button(id, label, .Secondary, disabled),
 		list = {
-			layout = {layoutDirection = .TopToBottom, padding = theme.pad_all(.XS)},
+			layout = {layoutDirection = .TopToBottom, padding = pad_all(.XS)},
 			backgroundColor = c.surface_0,
-			cornerRadius = theme.radius(.MD),
-			border = theme.border_box(c.border_strong),
+			cornerRadius = radius(.MD),
+			border = border_box(c.border_strong),
 		},
 		item = {
 			layout = {
 				sizing = {clay.SizingGrow(), clay.SizingFit()},
-				padding = theme.pad_xy(.MD, .SM),
+				padding = pad_xy(.MD, .SM),
 			},
-			cornerRadius = theme.radius(.SM),
+			cornerRadius = radius(.SM),
 		},
-		text = theme.text_style(.Body, c.text),
+		text = text_style(.Body, c.text),
 		item_hover = c.surface_1,
 		danger_text = c.danger,
 		disabled_text = c.text_disabled,
@@ -56,7 +55,7 @@ style_menu :: proc(id: clay.ElementId, label: string, disabled := false) -> Menu
 // The open state is kept internally, the caller owns no state.
 // Returns the index of the clicked entry and true in the frame of the click, otherwise (-1, false):
 //
-//   if i, ok := widgets.menu(items, cfg); ok { ... }
+//   if i, ok := kiln.menu(items, cfg); ok { ... }
 menu :: proc(items: []MenuItem, cfg: MenuConfig) -> (int, bool) {
 	picked := -1
 	trigger_id := cfg.trigger.id
@@ -82,7 +81,7 @@ menu :: proc(items: []MenuItem, cfg: MenuConfig) -> (int, bool) {
 			attachTo           = .ElementWithId,
 			parentId           = trigger_id.id,
 			attachment         = {element = .LeftTop, parent = .LeftBottom},
-			offset             = {0, theme.px(4)},
+			offset             = {0, px(4)},
 			zIndex             = 100,
 			pointerCaptureMode = .Capture,
 		}
@@ -95,7 +94,7 @@ menu :: proc(items: []MenuItem, cfg: MenuConfig) -> (int, bool) {
 						layout = {
 							sizing = {
 								clay.SizingGrow(),
-								clay.SizingFixed(theme.px(theme.BORDER_WIDTH)),
+								clay.SizingFixed(px(BORDER_WIDTH)),
 							},
 						},
 						backgroundColor = cfg.separator,

@@ -1,21 +1,19 @@
 package people
 
 import "core:fmt"
-import clay "lib:clay-odin"
-import "lib:theme"
-import "lib:widgets"
+import "lib:kiln"
 
 Person :: struct {
 	name, role, city: string,
 }
 
-COLUMNS := [?]widgets.TableColumn {
+COLUMNS := [?]kiln.TableColumn {
 	{title = "Name"},
 	{title = "Rolle"},
 	{title = "Stadt", width = 140, align = .Right},
 }
 
-MENU_ITEMS := [?]widgets.MenuItem {
+MENU_ITEMS := [?]kiln.MenuItem {
 	{label = "Bearbeiten"},
 	{label = "Duplizieren"},
 	{separator = true},
@@ -81,12 +79,12 @@ update :: proc(m: ^Model, msg: Msg) {
 view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 	has_selection := m.selected >= 0 && m.selected < len(m.people)
 
-	if widgets.card() {
-		if widgets.hstack(.SM) {
-			widgets.label("Personen", .Subtitle)
-			widgets.spacer()
-			cfg := widgets.style_menu(clay.ID_LOCAL("actions"), "Aktionen", !has_selection)
-			if i, ok := widgets.menu(MENU_ITEMS[:], cfg); ok {
+	if kiln.card() {
+		if kiln.hstack(.SM) {
+			kiln.label("Personen", .Subtitle)
+			kiln.spacer()
+			cfg := kiln.style_menu(kiln.id_local("actions"), "Aktionen", !has_selection)
+			if i, ok := kiln.menu(MENU_ITEMS[:], cfg); ok {
 				append(out, Menu_Action{i})
 			}
 		}
@@ -98,12 +96,12 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 		}
 
 		sel := m.selected
-		if widgets.table(&sel, COLUMNS[:], rows, widgets.style_table(clay.ID_LOCAL("table"))) {
+		if kiln.table(&sel, COLUMNS[:], rows, kiln.style_table(kiln.id_local("table"))) {
 			append(out, Select_Row{sel})
 		}
 
 		if len(m.last_action) > 0 {
-			widgets.label(m.last_action, .Caption, theme.current.text_muted)
+			kiln.label(m.last_action, .Caption, kiln.current_theme.text_muted)
 		}
 	}
 }

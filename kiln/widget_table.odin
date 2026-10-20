@@ -1,8 +1,7 @@
-package widgets
+package kiln
 
 
-import clay "lib:clay-odin"
-import "lib:theme"
+import clay "lib:kiln/clay-odin"
 
 // One column of a table.
 TableColumn :: struct {
@@ -27,15 +26,15 @@ TableConfig :: struct {
 
 // Table look from the current theme: bordered, with a raised header and striped rows.
 style_table :: proc(id: clay.ElementId) -> TableConfig {
-	c := theme.current
-	r := theme.px(theme.RADIUS[.MD])
+	c := current_theme
+	r := px(RADIUS[.MD])
 	return {
 		id = id,
 		box = {
 			layout = {layoutDirection = .TopToBottom, sizing = {clay.SizingGrow(), clay.SizingFit()}},
 			backgroundColor = c.bg,
-			cornerRadius = theme.radius(.MD),
-			border = theme.border_box(c.border),
+			cornerRadius = radius(.MD),
+			border = border_box(c.border),
 		},
 		header = {
 			layout = {sizing = {clay.SizingGrow(), clay.SizingFit()}},
@@ -46,12 +45,12 @@ style_table :: proc(id: clay.ElementId) -> TableConfig {
 		cell = {
 			layout = {
 				sizing = {clay.SizingGrow(), clay.SizingFit()},
-				padding = theme.pad_xy(.MD, .SM),
+				padding = pad_xy(.MD, .SM),
 			},
 		},
-		header_text = theme.text_style(.Body, c.text_muted),
-		cell_text = theme.text_style(.Body, c.text),
-		stripe = theme.color_alpha(c.surface_0, 0.5),
+		header_text = text_style(.Body, c.text_muted),
+		cell_text = text_style(.Body, c.text),
+		stripe = color_alpha(c.surface_0, 0.5),
 		row_hover = c.surface_1,
 		row_selected = c.surface_2,
 	}
@@ -104,7 +103,7 @@ table :: proc(selected: ^int, columns: []TableColumn, rows: [][]string, cfg: Tab
 @(private = "file")
 table_cell :: proc(col: TableColumn, text: string, style: clay.TextElementConfig, cfg: TableConfig) {
 	decl := cfg.cell
-	decl.layout.sizing.width = col.width > 0 ? clay.SizingFixed(theme.px(col.width)) : clay.SizingGrow()
+	decl.layout.sizing.width = col.width > 0 ? clay.SizingFixed(px(col.width)) : clay.SizingGrow()
 	decl.layout.childAlignment.x = col.align
 	if clay.UI_AutoId()(decl) {
 		clay.Text(text, style)

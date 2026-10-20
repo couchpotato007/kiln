@@ -1,8 +1,7 @@
-package widgets
+package kiln
 
 
-import clay "lib:clay-odin"
-import "lib:theme"
+import clay "lib:kiln/clay-odin"
 
 // Visual style of a button, used by `style_button`.
 ButtonVariant :: enum {
@@ -33,19 +32,19 @@ style_button :: proc(
 	variant := ButtonVariant.Primary,
 	disabled := false,
 ) -> ButtonConfig {
-	c := theme.current
+	c := current_theme
 	cfg := ButtonConfig {
 		id = id,
 		label = label,
 		disabled = disabled,
 		box = {
 			layout = {
-				sizing = {clay.SizingFit(), theme.size_control_height()},
-				padding = theme.pad_xy(.LG, .None),
-				childGap = theme.sp(.SM),
+				sizing = {clay.SizingFit(), size_control_height()},
+				padding = pad_xy(.LG, .None),
+				childGap = sp(.SM),
 				childAlignment = {x = .Center, y = .Center},
 			},
-			cornerRadius = theme.radius(.MD),
+			cornerRadius = radius(.MD),
 		},
 		disabled_bg = c.surface_0,
 		disabled_text = c.text_disabled,
@@ -56,34 +55,34 @@ style_button :: proc(
 		cfg.box.backgroundColor = c.primary
 		cfg.hover = c.primary_hover
 		cfg.active = c.primary_active
-		cfg.text = theme.text_style(.Body, c.on_primary)
+		cfg.text = text_style(.Body, c.on_primary)
 	case .Secondary:
 		cfg.box.backgroundColor = c.surface_1
-		cfg.box.border = theme.border_box(c.border)
+		cfg.box.border = border_box(c.border)
 		cfg.hover = c.surface_2
-		cfg.active = theme.color_mix(c.surface_2, c.text, 0.1)
-		cfg.text = theme.text_style(.Body, c.text)
+		cfg.active = color_mix(c.surface_2, c.text, 0.1)
+		cfg.text = text_style(.Body, c.text)
 	case .Ghost:
 		// Transparent version of the hover color, so the hover fade does not pass through black.
-		cfg.box.backgroundColor = theme.color_alpha(c.surface_0, 0)
+		cfg.box.backgroundColor = color_alpha(c.surface_0, 0)
 		cfg.hover = c.surface_0
 		cfg.active = c.surface_1
-		cfg.disabled_bg = theme.color_alpha(c.surface_0, 0)
-		cfg.text = theme.text_style(.Body, c.text)
+		cfg.disabled_bg = color_alpha(c.surface_0, 0)
+		cfg.text = text_style(.Body, c.text)
 	case .Danger:
 		cfg.box.backgroundColor = c.danger
-		cfg.hover = theme.color_mix(c.danger, c.text, 0.12)
-		cfg.active = theme.color_mix(c.danger, c.bg, 0.2)
-		cfg.text = theme.text_style(.Body, c.on_primary)
+		cfg.hover = color_mix(c.danger, c.text, 0.12)
+		cfg.active = color_mix(c.danger, c.bg, 0.2)
+		cfg.text = text_style(.Body, c.on_primary)
 	}
 	return cfg
 }
 
 // Two ways to declare a button, both return true in the frame in which it was clicked:
 //
-//   widgets.button("Save")                                  // short form, ID derived from the label
-//   widgets.button("Delete", .Danger, id = clay.ID_LOCAL("del", u32(i)))  // explicit ID, e.g. in loops
-//   widgets.button(widgets.style_button(id, "Save"))        // full control via ButtonConfig
+//   kiln.button("Save")                                                // short form, ID derived from the label
+//   kiln.button("Delete", .Danger, id = kiln.id_local("del", u32(i)))  // explicit ID, e.g. in loops
+//   kiln.button(kiln.style_button(id, "Save"))                         // full control via ButtonConfig
 button :: proc {
 	button_cfg,
 	button_label,
@@ -98,7 +97,7 @@ button_label :: proc(
 	id := clay.ElementId{},
 ) -> bool {
 	eid := id
-	if eid.id == 0 {eid = clay.ID_LOCAL(label)}
+	if eid.id == 0 {eid = id_local(label)}
 	return button_cfg(style_button(eid, label, variant, disabled))
 }
 

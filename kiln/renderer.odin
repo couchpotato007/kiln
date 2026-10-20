@@ -1,26 +1,30 @@
-package renderer
+package kiln
 
-import clay "../clay-odin"
+import clay "lib:kiln/clay-odin"
 import "base:runtime"
 import "core:math"
 import "core:strings"
 import "core:unicode/utf8"
 import rl "vendor:raylib"
 
+@(private = "package")
 Raylib_Font :: struct {
 	fontId: u16,
 	font:   rl.Font,
 }
 
+@(private = "file")
 clay_color_to_rl_color :: proc(color: clay.Color) -> rl.Color {
 	return {u8(color.r), u8(color.g), u8(color.b), u8(color.a)}
 }
 
+@(private = "package")
 raylib_fonts := [dynamic]Raylib_Font{}
 
 // Alias for compatibility, default to ascii support
 measure_text :: measure_text_unicode
 
+@(private = "file")
 measure_text_unicode :: proc "c" (
 	text: clay.StringSlice,
 	config: ^clay.TextElementConfig,
@@ -63,6 +67,7 @@ measure_text_unicode :: proc "c" (
 	return {width = line_width * scaleFactor + total_spacing, height = f32(config.fontSize)}
 }
 
+@(private = "file")
 measure_text_ascii :: proc "c" (
 	text: clay.StringSlice,
 	config: ^clay.TextElementConfig,
@@ -96,6 +101,7 @@ measure_text_ascii :: proc "c" (
 	return {width = line_width * scaleFactor + total_spacing, height = f32(config.fontSize)}
 }
 
+@(private = "package")
 clay_raylib_render :: proc(
 	render_commands: ^clay.ClayArray(clay.RenderCommand),
 	allocator := context.temp_allocator,

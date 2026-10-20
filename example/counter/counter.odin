@@ -1,8 +1,7 @@
 package counter
 
 import "core:fmt"
-import clay "lib:clay-odin"
-import "lib:widgets"
+import "lib:kiln"
 
 Model :: struct {
 	value: int,
@@ -41,20 +40,20 @@ update :: proc(m: ^Model, msg: Msg) {
 }
 
 view :: proc(m: ^Model, out: ^[dynamic]Msg) {
-	if widgets.card() {
-		widgets.label(fmt.tprintf("Zähler: %d", m.value), .Subtitle)
+	if kiln.card() {
+		kiln.label(fmt.tprintf("Zähler: %d", m.value), .Subtitle)
 
 		step := m.step
-		if widgets.slider(&step, 1, 10, widgets.style_slider(clay.ID_LOCAL("step"))) {
+		if kiln.slider(&step, 1, 10, kiln.style_slider(kiln.id_local("step"))) {
 			append(out, Set_Step{step = step})
 		}
-		widgets.label(fmt.tprintf("Step: %d", step))
+		kiln.label(fmt.tprintf("Step: %d", step))
 
-		if widgets.hstack(.SM) {
-			if widgets.button("-", .Secondary) {append(out, Dec{})}
-			if widgets.button("+") {append(out, Inc{})}
-			widgets.spacer()
-			if widgets.button("Reset", .Danger) {append(out, Reset{})}
+		if kiln.hstack(.SM) {
+			if kiln.button("-", .Secondary) {append(out, Dec{})}
+			if kiln.button("+") {append(out, Inc{})}
+			kiln.spacer()
+			if kiln.button("Reset", .Danger) {append(out, Reset{})}
 		}
 	}
 }

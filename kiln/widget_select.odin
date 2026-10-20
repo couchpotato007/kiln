@@ -1,8 +1,7 @@
-package widgets
+package kiln
 
 
-import clay "lib:clay-odin"
-import "lib:theme"
+import clay "lib:kiln/clay-odin"
 import rl "vendor:raylib"
 
 // Selected option index. The zero value (nil) means "nothing selected", so the placeholder is shown.
@@ -27,37 +26,37 @@ SelectConfig :: struct {
 }
 
 style_select :: proc(id: clay.ElementId, placeholder := "", disabled := false) -> SelectConfig {
-	c := theme.current
+	c := current_theme
 	return {
 		id = id,
 		box = {
 			layout = {
-				sizing = {clay.SizingGrow(), theme.size_control_height()},
-				padding = theme.pad_xy(.MD, .None),
-				childGap = theme.sp(.SM),
+				sizing = {clay.SizingGrow(), size_control_height()},
+				padding = pad_xy(.MD, .None),
+				childGap = sp(.SM),
 				childAlignment = {y = .Center},
 			},
 			backgroundColor = c.bg_sunken,
-			cornerRadius = theme.radius(.MD),
-			border = theme.border_box(c.border),
+			cornerRadius = radius(.MD),
+			border = border_box(c.border),
 		},
-		text = theme.text_style(.Body, c.text),
+		text = text_style(.Body, c.text),
 		placeholder = placeholder,
 		placeholder_color = c.text_disabled,
 		arrow_color = c.text_muted,
 		border_hover = c.primary,
 		list = {
-			layout = {layoutDirection = .TopToBottom, padding = theme.pad_all(.XS)},
+			layout = {layoutDirection = .TopToBottom, padding = pad_all(.XS)},
 			backgroundColor = c.surface_0,
-			cornerRadius = theme.radius(.MD),
-			border = theme.border_box(c.border_strong),
+			cornerRadius = radius(.MD),
+			border = border_box(c.border_strong),
 		},
 		item = {
 			layout = {
 				sizing = {clay.SizingGrow(), clay.SizingFit()},
-				padding = theme.pad_xy(.MD, .SM),
+				padding = pad_xy(.MD, .SM),
 			},
-			cornerRadius = theme.radius(.SM),
+			cornerRadius = radius(.SM),
 		},
 		item_hover = c.surface_1,
 		item_selected = c.surface_2,
@@ -106,17 +105,17 @@ select :: proc(selected: ^Select, options: []string, cfg: SelectConfig) -> bool 
 	if clay.UI(cfg.id)(box) {
 		clay.Text(shown, text)
 		if clay.UI_AutoId()({layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(0)}}}) {}
-		clay.Text(open ? "^" : "v", theme.text_style(.Body, cfg.arrow_color))
+		clay.Text(open ? "^" : "v", text_style(.Body, cfg.arrow_color))
 
 		if open {
 			list := cfg.list
 			list.layout.sizing.width = clay.SizingFixed(
-				data.found ? data.boundingBox.width : theme.px(200),
+				data.found ? data.boundingBox.width : px(200),
 			)
 			list.floating = {
 				attachTo = .Parent,
 				attachment = {element = .LeftTop, parent = .LeftBottom},
-				offset = {0, theme.px(4)},
+				offset = {0, px(4)},
 				zIndex = 100,
 				pointerCaptureMode = .Capture,
 			}

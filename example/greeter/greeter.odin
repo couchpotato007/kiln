@@ -2,12 +2,10 @@ package greeter
 
 import "core:fmt"
 import "core:strings"
-import clay "lib:clay-odin"
-import "lib:theme"
-import "lib:widgets"
+import "lib:kiln"
 
 Model :: struct {
-	field:    widgets.TextField,
+	field:    kiln.TextField,
 	greeting: string,
 }
 
@@ -24,28 +22,28 @@ update :: proc(m: ^Model, msg: Msg) {
 	switch msg {
 	case .Submit:
 		delete(m.greeting)
-		m.greeting = strings.clone(widgets.text_field_string(&m.field))
+		m.greeting = strings.clone(kiln.text_field_string(&m.field))
 	case .Clear:
 		delete(m.greeting)
 		m.greeting = ""
-		widgets.text_field_set(&m.field, "")
+		kiln.text_field_set(&m.field, "")
 	}
 }
 
 view :: proc(m: ^Model, out: ^[dynamic]Msg) {
-	if widgets.card() {
-		res := widgets.text_field(
+	if kiln.card() {
+		res := kiln.text_field(
 			&m.field,
-			widgets.style_textfield(clay.ID_LOCAL("name"), "Name..."),
+			kiln.style_textfield(kiln.id_local("name"), "Name..."),
 		)
 		if res.submitted {append(out, Msg.Submit)}
 
-		if widgets.hstack(.SM) {
-			if widgets.button("Begrüßen") {append(out, Msg.Submit)}
-			if widgets.button("Leeren", .Ghost) {append(out, Msg.Clear)}
+		if kiln.hstack(.SM) {
+			if kiln.button("Begrüßen") {append(out, Msg.Submit)}
+			if kiln.button("Leeren", .Ghost) {append(out, Msg.Clear)}
 		}
 		if len(m.greeting) > 0 {
-			widgets.label(fmt.tprintf("Hallo %s!", m.greeting), .Subtitle, theme.current.secondary)
+			kiln.label(fmt.tprintf("Hallo %s!", m.greeting), .Subtitle, kiln.current_theme.secondary)
 		}
 	}
 }

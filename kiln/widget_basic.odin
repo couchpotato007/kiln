@@ -1,23 +1,22 @@
-package widgets
+package kiln
 
 // Einfache, zustandslose Bausteine: label, separator, progress, scroll_clip
 
-import clay "lib:clay-odin"
-import "lib:theme"
+import clay "lib:kiln/clay-odin"
 
 // Text in Theme-Farbe. color = {} -> Standard-Textfarbe.
-// Beispiel: label("Hinweis", .Caption, theme.current.text_muted)
-label :: proc(text: string, role := theme.FontRole.Body, color := clay.Color{}) {
+// Beispiel: label("Hinweis", .Caption, kiln.current_theme.text_muted)
+label :: proc(text: string, role := FontRole.Body, color := clay.Color{}) {
 	col := color
-	if col == {} {col = theme.current.text}
-	clay.Text(text, theme.text_style(role, col))
+	if col == {} {col = current_theme.text}
+	clay.Text(text, text_style(role, col))
 }
 
 separator :: proc(vertical := false) {
-	w := theme.px(theme.BORDER_WIDTH)
+	w := px(BORDER_WIDTH)
 	sizing :=
 		vertical ? clay.Sizing{clay.SizingFixed(w), clay.SizingGrow()} : clay.Sizing{clay.SizingGrow(), clay.SizingFixed(w)}
-	if clay.UI_AutoId()({layout = {sizing = sizing}, backgroundColor = theme.current.border}) {}
+	if clay.UI_AutoId()({layout = {sizing = sizing}, backgroundColor = current_theme.border}) {}
 }
 
 // Clip-Config für scrollbare Container. Direkt in der Deklaration verwenden:
@@ -34,14 +33,14 @@ ProgressConfig :: struct {
 }
 
 style_progress :: proc(id: clay.ElementId) -> ProgressConfig {
-	c := theme.current
+	c := current_theme
 	height: f32 = 8
 	return {
 		id = id,
 		box = {
-			layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(theme.px(height))}},
+			layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(px(height))}},
 			backgroundColor = c.surface_1,
-			cornerRadius = clay.CornerRadiusAll(theme.px(height) / 2),
+			cornerRadius = clay.CornerRadiusAll(px(height) / 2),
 		},
 		fill_color = c.primary,
 		speed = 10,

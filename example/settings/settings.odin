@@ -1,9 +1,7 @@
 package settings
 
 import "core:fmt"
-import clay "lib:clay-odin"
-import "lib:theme"
-import "lib:widgets"
+import "lib:kiln"
 
 LANGUAGES := [?]string{"Deutsch", "English", "Français", "Español"}
 
@@ -20,14 +18,14 @@ SIZE_LABELS := [Size]string {
 }
 
 Model :: struct {
-	language: widgets.Select,
+	language: kiln.Select,
 	size:     Size,
 	notify:   bool,
 	volume:   int,
 }
 
 Set_Language :: struct {
-	language: widgets.Select,
+	language: kiln.Select,
 }
 Set_Size :: struct {
 	size: Size,
@@ -68,57 +66,57 @@ update :: proc(m: ^Model, msg: Msg) {
 }
 
 view :: proc(m: ^Model, out: ^[dynamic]Msg) {
-	muted := theme.current.text_muted
+	muted := kiln.current_theme.text_muted
 
-	if widgets.card(.LG, .MD) {
-		widgets.label("Einstellungen", .Subtitle)
+	if kiln.card(.LG, .MD) {
+		kiln.label("Einstellungen", .Subtitle)
 
-		if widgets.vstack(.XS) {
-			widgets.label("Sprache", .Caption, muted)
+		if kiln.vstack(.XS) {
+			kiln.label("Sprache", .Caption, muted)
 			lang := m.language
-			cfg := widgets.style_select(clay.ID_LOCAL("lang"), "Bitte wählen...")
-			if widgets.select(&lang, LANGUAGES[:], cfg) {
+			cfg := kiln.style_select(kiln.id_local("lang"), "Bitte wählen...")
+			if kiln.select(&lang, LANGUAGES[:], cfg) {
 				append(out, Set_Language{lang})
 			}
 		}
 
-		if widgets.vstack(.XS) {
-			widgets.label("Schriftgröße", .Caption, muted)
-			if widgets.hstack(.LG) {
+		if kiln.vstack(.XS) {
+			kiln.label("Schriftgröße", .Caption, muted)
+			if kiln.hstack(.LG) {
 				for s in Size {
 					size := m.size
-					cfg := widgets.style_radio(clay.ID_LOCAL("size", u32(s)), SIZE_LABELS[s])
-					if widgets.radio(&size, s, cfg) {append(out, Set_Size{size})}
+					cfg := kiln.style_radio(kiln.id_local("size", u32(s)), SIZE_LABELS[s])
+					if kiln.radio(&size, s, cfg) {append(out, Set_Size{size})}
 				}
 			}
 		}
 
 		notify := m.notify
-		cb := widgets.style_checkbox(clay.ID_LOCAL("notify"), "Benachrichtigungen")
-		if widgets.checkbox(&notify, cb) {append(out, Set_Notify{notify})}
+		cb := kiln.style_checkbox(kiln.id_local("notify"), "Benachrichtigungen")
+		if kiln.checkbox(&notify, cb) {append(out, Set_Notify{notify})}
 
-		if widgets.vstack(.XS) {
-			widgets.label(fmt.tprintf("Lautstärke: %d%%", m.volume), .Caption, muted)
+		if kiln.vstack(.XS) {
+			kiln.label(fmt.tprintf("Lautstärke: %d%%", m.volume), .Caption, muted)
 			vol := m.volume
-			if widgets.slider(&vol, 0, 100, widgets.style_slider(clay.ID_LOCAL("vol"))) {
+			if kiln.slider(&vol, 0, 100, kiln.style_slider(kiln.id_local("vol"))) {
 				append(out, Set_Volume{vol})
 			}
 		}
 
-		if widgets.accordion("Erweitert", widgets.style_accordion(clay.ID_LOCAL("advanced"))) {
-			widgets.label("Hier landen seltene Optionen.", .Caption, muted)
-			if widgets.hstack(.SM) {
-				widgets.spacer()
-				if widgets.button("Zurücksetzen", .Danger) {append(out, Reset{})}
+		if kiln.accordion("Erweitert", kiln.style_accordion(kiln.id_local("advanced"))) {
+			kiln.label("Hier landen seltene Optionen.", .Caption, muted)
+			if kiln.hstack(.SM) {
+				kiln.spacer()
+				if kiln.button("Zurücksetzen", .Danger) {append(out, Reset{})}
 			}
 		}
 
-		widgets.separator()
+		kiln.separator()
 		lang_name := "-"
 		if i, ok := m.language.?; ok && i < len(LANGUAGES) {
 			lang_name = LANGUAGES[i]
 		}
-		widgets.label(
+		kiln.label(
 			fmt.tprintf(
 				"%s, %s, Benachrichtigungen %s, Lautstärke %d",
 				lang_name,
@@ -127,7 +125,7 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 				m.volume,
 			),
 			.Body,
-			theme.current.secondary,
+			kiln.current_theme.secondary,
 		)
 	}
 }

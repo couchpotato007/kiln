@@ -1,13 +1,11 @@
-package widgets
+package kiln
 
 
 import "core:c"
 import "core:math"
 import "core:strings"
 import "core:unicode/utf8"
-import clay "lib:clay-odin"
-import "lib:renderer"
-import "lib:theme"
+import clay "lib:kiln/clay-odin"
 import rl "vendor:raylib"
 
 // Editing state of a text field. The zero value is an empty field.
@@ -40,25 +38,25 @@ TextFieldResult :: struct {
 }
 
 style_textfield :: proc(id: clay.ElementId, placeholder := "") -> TextFieldConfig {
-	c := theme.current
+	c := current_theme
 	return {
 		id = id,
 		box = {
 			layout = {
-				sizing = {clay.SizingGrow(), theme.size_control_height()},
-				padding = theme.pad_xy(.MD, .None),
+				sizing = {clay.SizingGrow(), size_control_height()},
+				padding = pad_xy(.MD, .None),
 				childAlignment = {y = .Center},
 			},
 			backgroundColor = c.bg_sunken,
-			cornerRadius = theme.radius(.MD),
-			border = theme.border_box(c.border),
+			cornerRadius = radius(.MD),
+			border = border_box(c.border),
 		},
-		text = theme.text_style(.Body, c.text),
+		text = text_style(.Body, c.text),
 		placeholder = placeholder,
-		placeholder_text = theme.text_style(.Body, c.text_disabled),
+		placeholder_text = text_style(.Body, c.text_disabled),
 		border_focus = c.primary,
 		cursor_color = c.primary,
-		cursor_width = theme.px(2),
+		cursor_width = px(2),
 		selection_color = c.selection,
 	}
 }
@@ -185,7 +183,7 @@ measure :: proc(s: string, cfg: clay.TextElementConfig) -> f32 {
 		chars     = chars,
 		baseChars = chars,
 	}
-	return renderer.measure_text(slice, &cfg, nil).width
+	return measure_text(slice, &cfg, nil).width
 }
 
 @(private = "file")

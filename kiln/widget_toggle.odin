@@ -1,10 +1,9 @@
-package widgets
+package kiln
 
 // Checkbox and radio share their config and drawing code.
 
 import "base:intrinsics"
-import clay "lib:clay-odin"
-import "lib:theme"
+import clay "lib:kiln/clay-odin"
 
 ToggleConfig :: struct {
 	id:            clay.ElementId,
@@ -43,7 +42,7 @@ checkbox :: proc(checked: ^bool, cfg: ToggleConfig) -> bool {
 
 // Sets `selected` to `value` when clicked. Works with enums and integers:
 //
-//   widgets.radio(&size, Size.Large, widgets.style_radio(clay.ID_LOCAL("large"), "Large"))
+//   kiln.radio(&size, Size.Large, kiln.style_radio(kiln.id_local("large"), "Large"))
 //
 // Returns true if `selected` changed.
 radio :: proc(
@@ -70,7 +69,7 @@ style_toggle :: proc(
 	round: bool,
 	disabled: bool,
 ) -> ToggleConfig {
-	c := theme.current
+	c := current_theme
 	size: f32 = 18
 	return {
 		id = id,
@@ -78,13 +77,13 @@ style_toggle :: proc(
 		size = size,
 		round = round,
 		disabled = disabled,
-		box = {layout = {childGap = theme.sp(.SM), childAlignment = {y = .Center}}},
+		box = {layout = {childGap = sp(.SM), childAlignment = {y = .Center}}},
 		mark = {
 			backgroundColor = c.bg_sunken,
-			cornerRadius = round ? clay.CornerRadiusAll(theme.px(size) / 2) : theme.radius(.SM),
-			border = theme.border_box(c.border_strong),
+			cornerRadius = round ? clay.CornerRadiusAll(px(size) / 2) : radius(.SM),
+			border = border_box(c.border_strong),
 		},
-		text = theme.text_style(.Body, c.text),
+		text = text_style(.Body, c.text),
 		checked_bg = c.primary,
 		check_color = c.on_primary,
 		hover_border = c.primary,
@@ -96,7 +95,7 @@ style_toggle :: proc(
 toggle_draw :: proc(cfg: ToggleConfig, checked: bool, s: Interaction) {
 	t := anim(cfg.id, 0, checked ? 1 : 0)
 	h := anim(cfg.id, 1, s.hovered ? 1 : 0)
-	size := theme.px(cfg.size)
+	size := px(cfg.size)
 
 	mark := cfg.mark
 	mark.layout.sizing = {clay.SizingFixed(size), clay.SizingFixed(size)}
@@ -110,7 +109,7 @@ toggle_draw :: proc(cfg: ToggleConfig, checked: bool, s: Interaction) {
 	if clay.UI(cfg.id)(cfg.box) {
 		if clay.UI_AutoId()(mark) {
 			inner := size * (cfg.round ? 0.4 : 0.5) * t
-			corner := cfg.round ? inner / 2 : min(theme.px(theme.RADIUS[.SM]), inner / 2)
+			corner := cfg.round ? inner / 2 : min(px(RADIUS[.SM]), inner / 2)
 			if clay.UI_AutoId()(
 			{
 				layout = {sizing = {clay.SizingFixed(inner), clay.SizingFixed(inner)}},

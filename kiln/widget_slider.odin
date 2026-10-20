@@ -1,10 +1,9 @@
-package widgets
+package kiln
 
 import "base:intrinsics"
 import "core:math"
 
-import clay "lib:clay-odin"
-import "lib:theme"
+import clay "lib:kiln/clay-odin"
 import rl "vendor:raylib"
 
 SliderConfig :: struct {
@@ -20,12 +19,12 @@ SliderConfig :: struct {
 }
 
 style_slider :: proc(id: clay.ElementId, disabled := false) -> SliderConfig {
-	c := theme.current
+	c := current_theme
 	return {
 		id = id,
 		box = {
 			layout = {
-				sizing = {clay.SizingGrow(), theme.size_control_height()},
+				sizing = {clay.SizingGrow(), size_control_height()},
 				childAlignment = {y = .Center},
 			},
 		},
@@ -41,7 +40,7 @@ style_slider :: proc(id: clay.ElementId, disabled := false) -> SliderConfig {
 
 // Changes `value` within [lo, hi]. Works with integers and floats:
 //
-//   widgets.slider(&volume, 0, 100, widgets.style_slider(clay.ID_LOCAL("vol")))
+//   kiln.slider(&volume, 0, 100, kiln.style_slider(kiln.id_local("vol")))
 //
 // Returns true if the value changed.
 slider :: proc(
@@ -52,7 +51,7 @@ slider :: proc(
 	intrinsics.type_is_float(T) {
 	s := interact(cfg.id, cfg.disabled)
 	data := clay.GetElementData(cfg.id)
-	knob := theme.px(cfg.knob_size)
+	knob := px(cfg.knob_size)
 	changed := false
 
 	flo, fhi := f32(lo), f32(hi)
@@ -74,12 +73,12 @@ slider :: proc(
 	frac: f32 = fhi > flo ? clamp((f32(value^) - flo) / (fhi - flo), 0, 1) : 0
 	hv := anim(cfg.id, 0, (s.hovered || s.held) ? 1 : 0)
 	width := data.found ? data.boundingBox.width : 0
-	track_r := clay.CornerRadiusAll(theme.px(cfg.track_height) / 2)
+	track_r := clay.CornerRadiusAll(px(cfg.track_height) / 2)
 
 	if clay.UI(cfg.id)(cfg.box) {
 		if clay.UI_AutoId()(
 		{
-			layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(theme.px(cfg.track_height))}},
+			layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(px(cfg.track_height))}},
 			backgroundColor = cfg.track_color,
 			cornerRadius = track_r,
 		},

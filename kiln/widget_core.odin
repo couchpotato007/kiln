@@ -1,4 +1,4 @@
-package widgets
+package kiln
 
 // Shared foundations for all widgets:
 //  - interact(): mouse interaction (hover / pressed / held / clicked)
@@ -9,7 +9,7 @@ package widgets
 // visual state (animation values, open popup) lives here.
 
 import "core:math"
-import clay "lib:clay-odin"
+import clay "lib:kiln/clay-odin"
 import rl "vendor:raylib"
 
 // Mouse state of a widget in the current frame, returned by `interact`.
@@ -97,7 +97,7 @@ anim :: proc(id: clay.ElementId, slot: u32, target: f32, speed: f32 = 14) -> f32
 	return v
 }
 
-// Like `theme.color_mix`, but interpolates the alpha channel as well.
+// Like `kiln.color_mix`, but interpolates the alpha channel as well.
 color_lerp :: proc(a, b: clay.Color, t: f32) -> clay.Color {
 	return a + (b - a) * t
 }

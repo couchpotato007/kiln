@@ -3,7 +3,7 @@
   "collections": [
     {
       "name": "lib",
-      "path": "src"
+      "path": "."
     }
   ],
   "enable_document_symbols": true,

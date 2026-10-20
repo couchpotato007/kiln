@@ -2,10 +2,7 @@ package main
 
 import "counter"
 import "greeter"
-import "lib:app"
-import clay "lib:clay-odin"
-import "lib:theme"
-import "lib:widgets"
+import "lib:kiln"
 import "people"
 import "settings"
 import "todo"
@@ -13,7 +10,7 @@ import "todo"
 Tab_Selected :: distinct int
 
 Set_Flavor :: struct {
-	flavor: theme.Flavor,
+	flavor: kiln.Flavor,
 }
 
 Msg :: union #no_nil {
@@ -37,7 +34,7 @@ Model :: struct {
 
 tab_names := [?]string{"Zähler", "Begrüßung", "Aufgaben", "Einstellungen", "Personen"}
 
-FLAVOR_NAMES := [theme.Flavor]string {
+FLAVOR_NAMES := [kiln.Flavor]string {
 	.Mocha     = "Mocha",
 	.Macchiato = "Macchiato",
 	.Frappe    = "Frappé",
@@ -69,42 +66,42 @@ update :: proc(m: ^Model, msg: Msg) {
 	case Tab_Selected:
 		m.tab = int(v)
 	case Set_Flavor:
-		theme.set_flavor(v.flavor)
+		kiln.set_flavor(v.flavor)
 	}
 }
 
 view :: proc(m: ^Model, out: ^[dynamic]Msg) {
-	if widgets.vstack(.MD, fill = .Both) {
-		if widgets.hstack(.SM) {
-			widgets.label("Meine App", .Title, theme.current.primary)
-			widgets.spacer()
-			for f in theme.Flavor {
-				variant := widgets.ButtonVariant.Secondary
-				if f == theme.current_flavor {variant = .Primary}
-				if widgets.button(FLAVOR_NAMES[f], variant) {append(out, Set_Flavor{f})}
+	if kiln.vstack(.MD, fill = .Both) {
+		if kiln.hstack(.SM) {
+			kiln.label("Meine App", .Title, kiln.current_theme.primary)
+			kiln.spacer()
+			for f in kiln.Flavor {
+				variant := kiln.ButtonVariant.Secondary
+				if f == kiln.current_flavor {variant = .Primary}
+				if kiln.button(FLAVOR_NAMES[f], variant) {append(out, Set_Flavor{f})}
 			}
 		}
 
 		tab := m.tab
-		if widgets.tabs(&tab, tab_names[:], widgets.style_tabs(clay.ID("Tabs"))) {
+		if kiln.tabs(&tab, tab_names[:], kiln.style_tabs(kiln.id("Tabs"))) {
 			append(out, Tab_Selected(tab))
 		}
 
 		switch m.tab {
 		case 0:
-			app.embed(out, &m.counter, counter.view)
+			kiln.embed(out, &m.counter, counter.view)
 		case 1:
-			app.embed(out, &m.greeter, greeter.view)
+			kiln.embed(out, &m.greeter, greeter.view)
 		case 2:
-			app.embed(out, &m.todo, todo.view)
+			kiln.embed(out, &m.todo, todo.view)
 		case 3:
-			app.embed(out, &m.settings, settings.view)
+			kiln.embed(out, &m.settings, settings.view)
 		case 4:
-			app.embed(out, &m.people, people.view)
+			kiln.embed(out, &m.people, people.view)
 		}
 	}
 }
 
 main :: proc() {
-	app.run(app.App(Model, Msg){init = init, update = update, view = view}, title = "Meine App")
+	kiln.run(kiln.App(Model, Msg){init = init, update = update, view = view}, title = "Meine App")
 }

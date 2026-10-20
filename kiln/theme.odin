@@ -1,14 +1,13 @@
-package theme
+package kiln
 
 
 import "core:math"
-import clay "lib:clay-odin"
-import "lib:renderer"
+import clay "lib:kiln/clay-odin"
 import rl "vendor:raylib"
 
 
 // Semantic color slots used by all widgets.
-// Use `theme_catppuccin` to get a preset, or fill it manually and pass it to `set_theme`.
+// Use `catppuccin` to get a preset, or fill it manually and pass it to `set_theme`.
 Theme :: struct {
 	bg, bg_sunken:                                      clay.Color, // window background / inset areas (inputs)
 	surface_0, surface_1, surface_2:                    clay.Color, // raised surfaces, from subtle to strong
@@ -109,7 +108,7 @@ color_alpha :: proc(col: clay.Color, alpha: f32) -> clay.Color {
 
 // Builds a complete `Theme` from a Catppuccin flavor. Hover/active colors of the
 // primary color are derived by mixing it with the text/background color.
-theme_catppuccin :: proc(flavor: Flavor) -> Theme {
+catppuccin :: proc(flavor: Flavor) -> Theme {
 	p := PALETTES[flavor]
 	return {
 		bg = p.base,
@@ -133,14 +132,14 @@ theme_catppuccin :: proc(flavor: Flavor) -> Theme {
 }
 
 // The active theme. All `style_*` procs of the widgets read their default colors from here.
-current: Theme
+current_theme: Theme
 current_flavor: Flavor
 g_fonts: ThemeFonts
 
 // Selects the initial flavor and the font files (regular and bold TTF).
 // Call once after the window was created. Fonts are loaded in `begin_frame`.
-init :: proc(flavor: Flavor, fonts: ThemeFonts) {
-	current = theme_catppuccin(flavor)
+init_theme :: proc(flavor: Flavor, fonts: ThemeFonts) {
+	current_theme = catppuccin(flavor)
 	current_flavor = flavor
 	g_fonts = fonts
 	g_scale.effective = 0
@@ -148,13 +147,13 @@ init :: proc(flavor: Flavor, fonts: ThemeFonts) {
 
 // Switches to another Catppuccin flavor at runtime. Takes effect on the next widget declaration.
 set_flavor :: proc(flavor: Flavor) {
-	current = theme_catppuccin(flavor)
+	current_theme = catppuccin(flavor)
 	current_flavor = flavor
 }
 
 // Sets a custom theme, e.g. a preset with a few colors overridden.
 set_theme :: proc(theme: Theme) {
-	current = theme
+	current_theme = theme
 }
 
 
@@ -299,15 +298,15 @@ load_font :: proc(id: u16, size: u16, path: cstring) {
 	cps := codepoints()
 	font := rl.LoadFontEx(path, i32(size) * g_scale.font_oversample, raw_data(cps), i32(len(cps)))
 	rl.SetTextureFilter(font.texture, .BILINEAR)
-	assign_at(&renderer.raylib_fonts, id, renderer.Raylib_Font{font = font, fontId = id})
+	assign_at(&raylib_fonts, id, Raylib_Font{font = font, fontId = id})
 }
 
 // Unloads and reloads all role fonts at the current scale and clears Clay's text measurement cache.
 reload_fonts :: proc() {
 	for role in FontRole {
 		id := u16(role)
-		if int(id) < len(renderer.raylib_fonts) {
-			rl.UnloadFont(renderer.raylib_fonts[id].font)
+		if int(id) < len(raylib_fonts) {
+			rl.UnloadFont(raylib_fonts[id].font)
 		}
 		path := FONT_FACE[role] == .Bold ? g_fonts.bold : g_fonts.regular
 		load_font(id, font_size(role), path)
@@ -379,8 +378,8 @@ text_style :: proc(role: FontRole, color: clay.Color) -> clay.TextElementConfig 
 style_panel :: proc(padding := Space.MD) -> clay.ElementDeclaration {
 	return {
 		layout = {padding = pad_all(padding), childGap = sp(.SM), layoutDirection = .TopToBottom},
-		backgroundColor = current.surface_0,
+		backgroundColor = current_theme.surface_0,
 		cornerRadius = radius(.MD),
-		border = border_box(current.border),
+		border = border_box(current_theme.border),
 	}
 }

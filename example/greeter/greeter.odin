@@ -7,7 +7,7 @@ import "lib:theme"
 import "lib:widgets"
 
 Model :: struct {
-	field:    widgets.TextField, // reiner UI-State, wird vom Widget selbst verwaltet
+	field:    widgets.TextField,
 	greeting: string,
 }
 

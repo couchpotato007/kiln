@@ -9,7 +9,6 @@ Model :: struct {
 	step:  int,
 }
 
-// Jede Variante ist ein eigener Typ. Nachrichten ohne Daten sind leere Structs.
 Inc :: struct {}
 Dec :: struct {}
 Reset :: struct {}

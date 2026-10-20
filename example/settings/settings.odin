@@ -20,7 +20,7 @@ SIZE_LABELS := [Size]string {
 }
 
 Model :: struct {
-	language: widgets.Select, // nil = nichts gewählt (Platzhalter)
+	language: widgets.Select,
 	size:     Size,
 	notify:   bool,
 	volume:   int,

@@ -15,7 +15,6 @@ COLUMNS := [?]widgets.TableColumn {
 	{title = "Stadt", width = 140, align = .Right},
 }
 
-// Indizes werden in `update` ausgewertet: 0 Bearbeiten, 1 Duplizieren, 2 Trenner, 3 Löschen.
 MENU_ITEMS := [?]widgets.MenuItem {
 	{label = "Bearbeiten"},
 	{label = "Duplizieren"},
@@ -92,7 +91,6 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 			}
 		}
 
-		// Die Tabelle erwartet [][]string, deshalb jeden Frame aufbauen (temp allocator).
 		rows := make([][]string, len(m.people), context.temp_allocator)
 		for p, i in m.people {
 			rows[i] = make([]string, 3, context.temp_allocator)

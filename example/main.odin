@@ -36,9 +36,21 @@ apply_look :: proc(look: Look) {
 	switch look {
 	case .Standard:
 	case .Eckig:
-		t.radii = {.None = 0, .SM = 0, .MD = 0, .LG = 0, .Full = 0}
+		t.radii = {
+			.None = 0,
+			.SM   = 0,
+			.MD   = 0,
+			.LG   = 0,
+			.Full = 0,
+		}
 	case .Rund:
-		t.radii = {.None = 0, .SM = 8, .MD = 16, .LG = 24, .Full = 9999}
+		t.radii = {
+			.None = 0,
+			.SM   = 8,
+			.MD   = 16,
+			.LG   = 24,
+			.Full = 9999,
+		}
 		t.sizes[.LG] = 40
 	case .Kompakt:
 		for s in kiln.Space {t.spacing[s] *= 0.7}
@@ -136,46 +148,49 @@ update :: proc(m: ^Model, msg: Msg) {
 }
 
 view :: proc(m: ^Model, out: ^[dynamic]Msg) {
-	if kiln.vstack(.MD, fill = .Both) {
-		if kiln.hstack(.SM) {
-			kiln.label("Meine App", .Title, kiln.current_theme.primary)
-			kiln.spacer()
-			for f in kiln.Flavor {
-				variant := kiln.ButtonVariant.Secondary
-				if f == kiln.current_flavor {variant = .Primary}
-				if kiln.button(FLAVOR_NAMES[f], variant) {append(out, Set_Flavor{f})}
+	if kiln.hstack(.SM, fill = .Both) {
+		if kiln.vstack(.MD, fill = .Both) {
+			if kiln.hstack(.SM) {
+				kiln.label("Meine App", .Title, kiln.current_theme.primary)
+				kiln.spacer()
+				for f in kiln.Flavor {
+					variant := kiln.ButtonVariant.Secondary
+					if f == kiln.current_flavor {variant = .Primary}
+					if kiln.button(FLAVOR_NAMES[f], variant) {append(out, Set_Flavor{f})}
+				}
+			}
+
+			if kiln.hstack(.SM) {
+				kiln.label("Stil", .Caption, kiln.current_theme.text_muted)
+				look := m.look
+				if kiln.segmented(&look, LOOK_NAMES[:]) {append(out, Set_Look{look})}
+			}
+
+			tab := m.tab
+			if kiln.tabs(&tab, tab_names[:]) {
+				append(out, Tab_Selected(tab))
+			}
+
+			switch m.tab {
+			case 0:
+				kiln.embed(out, &m.counter, counter.view)
+			case 1:
+				kiln.embed(out, &m.greeter, greeter.view)
+			case 2:
+				kiln.embed(out, &m.todo, todo.view)
+			case 3:
+				kiln.embed(out, &m.settings, settings.view)
+			case 4:
+				kiln.embed(out, &m.people, people.view)
+			case 5:
+				kiln.embed(out, &m.gallery, gallery.view)
+			case 6:
+				kiln.embed(out, &m.treeview, treeview.view)
+			case 7:
+				kiln.embed(out, &m.overlays, overlays.view)
 			}
 		}
 
-		if kiln.hstack(.SM) {
-			kiln.label("Stil", .Caption, kiln.current_theme.text_muted)
-			look := m.look
-			if kiln.segmented(&look, LOOK_NAMES[:]) {append(out, Set_Look{look})}
-		}
-
-		tab := m.tab
-		if kiln.tabs(&tab, tab_names[:]) {
-			append(out, Tab_Selected(tab))
-		}
-
-		switch m.tab {
-		case 0:
-			kiln.embed(out, &m.counter, counter.view)
-		case 1:
-			kiln.embed(out, &m.greeter, greeter.view)
-		case 2:
-			kiln.embed(out, &m.todo, todo.view)
-		case 3:
-			kiln.embed(out, &m.settings, settings.view)
-		case 4:
-			kiln.embed(out, &m.people, people.view)
-		case 5:
-			kiln.embed(out, &m.gallery, gallery.view)
-		case 6:
-			kiln.embed(out, &m.treeview, treeview.view)
-		case 7:
-			kiln.embed(out, &m.overlays, overlays.view)
-		}
 	}
 }
 

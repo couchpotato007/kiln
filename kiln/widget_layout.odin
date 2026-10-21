@@ -34,25 +34,66 @@ fill_sizing :: proc(f: Fill) -> clay.Sizing {
 	return {w, h}
 }
 
+// Background slots of the theme. Resolved every frame, so flavor/theme changes apply instantly.
+Surface :: enum {
+	None, // transparent
+	Window,
+	Sunken, // inputs, inset areas
+	Surface_0, // raised, subtle
+	Surface_1,
+	Surface_2, // raised, strong
+	Primary,
+}
+
+surface_color :: proc(s: Surface) -> clay.Color {
+	c := current_theme
+	switch s {
+	case .None:
+		return {}
+	case .Window:
+		return c.bg
+	case .Sunken:
+		return c.bg_sunken
+	case .Surface_0:
+		return c.surface_0
+	case .Surface_1:
+		return c.surface_1
+	case .Surface_2:
+		return c.surface_2
+	case .Primary:
+		return c.primary
+	}
+	return {}
+}
+
 @(private = "file")
 stack :: proc(
 	dir: clay.LayoutDirection,
 	gap, padding: Space,
 	sizing: clay.Sizing,
 	align: clay.ChildAlignment,
+	bg: Surface,
+	bg_color: clay.Color,
+	round: Radius,
+	bordered: bool,
 ) {
-	clay._OpenElement()
-	clay.ConfigureOpenElement(
-		{
-			layout = {
-				sizing = sizing,
-				padding = pad_all(padding),
-				childGap = sp(gap),
-				childAlignment = align,
-				layoutDirection = dir,
-			},
+	color := bg_color
+	if color == {} {color = surface_color(bg)}
+	decl := clay.ElementDeclaration {
+		layout = {
+			sizing = sizing,
+			padding = pad_all(padding),
+			childGap = sp(gap),
+			childAlignment = align,
+			layoutDirection = dir,
 		},
-	)
+		backgroundColor = color,
+		cornerRadius = radius(round),
+	}
+	if bordered {decl.border = border_box(current_theme.border)}
+
+	clay._OpenElement()
+	clay.ConfigureOpenElement(decl)
 }
 
 // Vertical stack: children are placed top to bottom with `gap` between them.
@@ -64,8 +105,12 @@ vstack :: proc(
 	padding := Space.None,
 	fill := Fill.Width,
 	align := clay.ChildAlignment{},
+	bg := Surface.None,
+	bg_color := clay.Color{},
+	round := Radius.None,
+	bordered := false,
 ) -> bool {
-	stack(.TopToBottom, gap, padding, fill_sizing(fill), align)
+	stack(.TopToBottom, gap, padding, fill_sizing(fill), align, bg, bg_color, round, bordered)
 	return true
 }
 
@@ -77,8 +122,12 @@ hstack :: proc(
 	padding := Space.None,
 	fill := Fill.Width,
 	align := clay.ChildAlignment{y = .Center},
+	bg := Surface.None,
+	bg_color := clay.Color{},
+	round := Radius.None,
+	bordered := false,
 ) -> bool {
-	stack(.LeftToRight, gap, padding, fill_sizing(fill), align)
+	stack(.LeftToRight, gap, padding, fill_sizing(fill), align, bg, bg_color, round, bordered)
 	return true
 }
 
@@ -118,11 +167,7 @@ card :: proc(padding := Space.MD, gap := Space.SM) -> bool {
 // Vertically scrollable container (mouse wheel). `height` is in unscaled units,
 // 0 fills the available height. Requires `clay.UpdateScrollContainers` to run every frame.
 @(deferred_none = close_element)
-scroll_view :: proc(
-	height: f32 = 0,
-	gap := Space.XS,
-	padding := Space.None,
-) -> bool {
+scroll_view :: proc(height: f32 = 0, gap := Space.XS, padding := Space.None) -> bool {
 	clay._OpenElement()
 	h := height > 0 ? clay.SizingFixed(px(height)) : clay.SizingGrow()
 	clay.ConfigureOpenElement(

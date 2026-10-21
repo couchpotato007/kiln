@@ -51,7 +51,6 @@ run :: proc(
 		regular = "resources/Iosevka-Regular.ttf",
 		bold = "resources/Iosevka-SemiBold.ttf",
 	},
-	padding := Space.LG,
 	theme: Maybe(Theme) = nil,
 ) {
 	rl.SetConfigFlags({.VSYNC_HINT, .WINDOW_RESIZABLE, .MSAA_4X_HINT})
@@ -98,10 +97,7 @@ run :: proc(
 		clay.BeginLayout()
 		if clay.UI(clay.ID("AppRoot"))(
 		{
-			layout = {
-				sizing = {clay.SizingGrow(), clay.SizingGrow()},
-				padding = pad_all(padding),
-			},
+			layout = {sizing = {clay.SizingGrow(), clay.SizingGrow()}, padding = pad_all(.LG)},
 			backgroundColor = current_theme.bg,
 		},
 		) {

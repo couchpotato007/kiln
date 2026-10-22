@@ -46,3 +46,11 @@ There will be problems becaues the hole code was written with claude free
 
 If you find problems clone the repo and fix it. Or dont
 
+
+# AI Disclamer
+
+Its all vibe
+
+Some say "I guided the AI" I didnt
+
+Some say "I testet the Code" I didnt (the AI did it said its good)

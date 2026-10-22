@@ -37,6 +37,9 @@
           clang-tools
           cmake
           raylib
+          curl
+          zlib
+          mpv
           libxinerama
           libxcursor
           xinput
@@ -51,6 +54,8 @@
           pkgs.libc
           pkgs.raylib
           pkgs.xinput
+          pkgs.curl
+          pkgs.zlib
         ];
 
         EMSCRIPTEN_SDK_DIR = "${pkgs.emscripten}";

@@ -146,7 +146,9 @@ scroll_clip :: proc(vertical := true, horizontal := false) -> clay.ClipElementCo
 // 0 fills the available height.
 @(deferred_none = close_element)
 scroll_view :: proc(height: f32 = 0, gap := th.Space.XS, padding := th.Space.None) -> bool {
-	open_element(
+	// Configure after opening: Clay_GetScrollOffset() refers to the currently open element.
+	clay._OpenElement()
+	clay.ConfigureOpenElement(
 		{
 			layout = {
 				sizing = {

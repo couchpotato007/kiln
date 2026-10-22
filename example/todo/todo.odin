@@ -64,6 +64,8 @@ update :: proc(m: ^Model, msg: Msg) {
 }
 
 view :: proc(m: ^Model, out: ^[dynamic]Msg) {
+	muted := kiln.theme().text_muted
+
 	done := 0
 	for it in m.items {
 		if it.done {done += 1}
@@ -71,33 +73,25 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 	input_empty := len(strings.trim_space(kiln.text_field_string(&m.field))) == 0
 
 	if kiln.card() {
-		if kiln.hstack(.SM) {
-			res := kiln.text_field(&m.field, "Neue Aufgabe...")
-			if res.submitted {append(out, Add{})}
-
+		if kiln.hstack() {
+			if kiln.text_field(&m.field, "Neue Aufgabe...").submitted {append(out, Add{})}
 			if kiln.button("Hinzufügen", disabled = input_empty) {append(out, Add{})}
 		}
 
-		frac: f32 = len(m.items) > 0 ? f32(done) / f32(len(m.items)) : 0
-		kiln.progress(frac)
-		kiln.label(
-			fmt.tprintf("%d von %d erledigt", done, len(m.items)),
-			.Caption,
-			kiln.current_theme.text_muted,
-		)
+		kiln.progress(len(m.items) > 0 ? f32(done) / f32(len(m.items)) : 0)
+		kiln.label(fmt.tprintf("%d von %d erledigt", done, len(m.items)), .Caption, muted)
 		kiln.separator()
 
 		if kiln.scroll_view(240) {
 			if len(m.items) == 0 {
-				kiln.label("Nichts zu tun.", .Body, kiln.current_theme.text_disabled)
+				kiln.label("Nichts zu tun.", .Body, kiln.theme().text_disabled)
 			}
 			for it, i in m.items {
-				if kiln.hstack(.SM) {
+				if kiln.hstack() {
 					checked := it.done
 					if kiln.checkbox(&checked, it.text, id = kiln.id_local("done", u32(i))) {
 						append(out, Toggle{i})
 					}
-
 					kiln.spacer()
 					if kiln.button("x", .Ghost, id = kiln.id_local("del", u32(i))) {
 						append(out, Remove{i})
@@ -106,7 +100,7 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 			}
 		}
 
-		if kiln.hstack(.SM) {
+		if kiln.hstack() {
 			kiln.spacer()
 			if kiln.button("Erledigte entfernen", .Secondary, done == 0) {
 				append(out, Clear_Done{})

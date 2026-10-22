@@ -36,7 +36,7 @@ Msg :: union #no_nil {
 }
 
 init :: proc() -> Model {
-	return {mode = 0}
+	return {}
 }
 
 update :: proc(m: ^Model, msg: Msg) {
@@ -62,51 +62,45 @@ update :: proc(m: ^Model, msg: Msg) {
 }
 
 view :: proc(m: ^Model, out: ^[dynamic]Msg) {
-	muted := kiln.current_theme.text_muted
+	muted := kiln.theme().text_muted
 
 	if kiln.card() {
 		kiln.label("Ansichtsmodus", .Subtitle)
 		mode := m.mode
-		if kiln.segmented(&mode, MODE_NAMES[:]) {
-			append(out, Set_Mode{mode})
-		}
+		if kiln.segmented(&mode, MODE_NAMES[:]) {append(out, Set_Mode{mode})}
 		kiln.label(fmt.tprintf("Modus: %s", MODE_NAMES[m.mode]), .Caption, muted)
-		kiln.separator()
 	}
 
 	if kiln.card() {
 		kiln.label("Dialog", .Subtitle)
 		kiln.label("Öffnet einen modalen Bestätigungsdialog.", .Caption, muted)
-		if kiln.button("Eintrag löschen", .Danger, disabled = m.deleted) {
-			m.confirm_open = true
+		if kiln.hstack() {
+			if kiln.button("Eintrag löschen", .Danger, m.deleted) {m.confirm_open = true}
+			if m.deleted {kiln.badge("Gelöscht", .Danger)}
 		}
-		if m.deleted {
-			kiln.badge("Gelöscht", .Danger)
-		}
-		kiln.separator()
 	}
 
 	if kiln.card() {
 		kiln.label("Kontextmenü", .Subtitle)
-		kiln.label("Rechtsklick auf die Zeile.", .Caption, muted)
+		kiln.label("Rechtsklick auf die Zeile öffnet das Menü am Mauszeiger.", .Caption, muted)
 
-		row_id := kiln.id_local("row")
-		if kiln.button("projekt.odin", .Secondary, id = row_id) {}
-		kiln.tooltip(row_id, "Rechtsklick öffnet das Kontextmenü")
-		if i, ok := kiln.context_menu(CONTEXT_ITEMS[:], row_id); ok {
+		row := kiln.id_local("row")
+		if kiln.button("projekt.odin", .Secondary, id = row) {}
+		kiln.tooltip(row, "Rechtsklick öffnet das Kontextmenü")
+		if i, ok := kiln.context_menu(CONTEXT_ITEMS[:], row); ok {
 			append(out, Context_Action{i})
 		}
 
 		if len(m.last_action) > 0 {
-			kiln.label(m.last_action, .Caption, kiln.current_theme.secondary)
+			kiln.label(m.last_action, .Caption, kiln.theme().secondary)
 		}
 	}
 
-	// Modal is declared last so it floats above everything else in this view.
+	// Declared last so the modal floats above everything else in this view.
 	if kiln.modal("Eintrag löschen?", &m.confirm_open) {
 		kiln.label("Der Eintrag wird dauerhaft entfernt.", .Body, muted)
 		kiln.label("Dieser Schritt kann nicht rückgängig gemacht werden.", .Caption, muted)
-		if kiln.hstack(.SM) {
+		if kiln.hstack() {
 			kiln.spacer()
 			if kiln.button("Abbrechen", .Ghost) {m.confirm_open = false}
 			if kiln.button("Löschen", .Danger) {append(out, Confirm_Delete{})}

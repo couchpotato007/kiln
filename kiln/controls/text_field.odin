@@ -1,11 +1,12 @@
-package kiln
+package controls
 
-
-import "core:c"
 import "core:math"
 import "core:strings"
 import "core:unicode/utf8"
 import clay "lib:kiln/clay-odin"
+import fd "lib:kiln/foundation"
+import "lib:kiln/render"
+import th "lib:kiln/theme"
 import rl "vendor:raylib"
 
 // Editing state of a text field. The zero value is an empty field.
@@ -45,34 +46,40 @@ text_field_string :: proc(tf: ^TextField) -> string {
 //
 //   res := kiln.text_field(&m.field, "Name...")
 //
-// Without `id` the ID is derived from the placeholder, so several fields in the same parent
+// Without `id` the id is derived from the placeholder, so several fields in the same parent
 // need an explicit `id`.
 text_field :: proc(
 	tf: ^TextField,
 	placeholder := "",
+	disabled := false,
 	id := clay.ElementId{},
 ) -> TextFieldResult {
-	col := current_theme
-	eid := resolve_id(id, len(placeholder) > 0 ? placeholder : "textfield")
+	c := th.current()
+	eid := fd.resolve_id(id, len(placeholder) > 0 ? placeholder : "textfield")
 
-	text_cfg := text_style(.Body, col.text)
+	text_cfg := th.text_style(.Body, disabled ? c.text_disabled : c.text)
 	text_cfg.wrapMode = .None
-	ph_cfg := text_style(.Body, col.text_disabled)
+	ph_cfg := th.text_style(.Body, c.text_disabled)
 	ph_cfg.wrapMode = .None
-	pad := pad_xy(.MD, .None)
+	pad := th.pad_xy(.MD, .None)
+
+	if disabled {
+		tf.focused = false
+		tf.dragging = false
+	}
 
 	tf.blink += rl.GetFrameTime()
-	res := handle_input(tf, eid, pad, text_cfg)
+	res := handle_input(tf, eid, pad, text_cfg, disabled)
 
 	s := string(tf.buf[:])
 	data := clay.GetElementData(eid)
-	cursor_x := measure(s[:tf.cursor], text_cfg)
+	cursor_x := render.text_width(s[:tf.cursor], text_cfg)
 
 	if data.found {
 		inner_w := data.boundingBox.width - f32(pad.left) - f32(pad.right)
 		if cursor_x - tf.scroll > inner_w - 2 {tf.scroll = cursor_x - inner_w + 2}
 		if cursor_x - tf.scroll < 0 {tf.scroll = cursor_x}
-		total := measure(s, text_cfg)
+		total := render.text_width(s, text_cfg)
 		tf.scroll = clamp(tf.scroll, 0, max(0, total - inner_w + 2))
 	} else {
 		tf.scroll = 0
@@ -89,13 +96,13 @@ text_field :: proc(
 	if clay.UI(eid)(
 	{
 		layout = {
-			sizing = {clay.SizingGrow(), size_control_height()},
+			sizing = {clay.SizingGrow(), th.control_height()},
 			padding = pad,
 			childAlignment = {y = .Center},
 		},
-		backgroundColor = col.bg_sunken,
-		cornerRadius = radius(.MD),
-		border = border_box(tf.focused ? col.primary : col.border),
+		backgroundColor = c.bg_sunken,
+		cornerRadius = th.radius(.MD),
+		border = th.border_box(tf.focused ? c.primary : c.border),
 		clip = {horizontal = true, childOffset = {-tf.scroll, 0}},
 	},
 	) {
@@ -107,24 +114,22 @@ text_field :: proc(
 
 		if tf.focused && has_selection(tf) {
 			lo, hi := sel_range(tf)
-			x0 := measure(s[:lo], text_cfg)
-			x1 := measure(s[:hi], text_cfg)
-			if clay.UI()(
+			x0 := render.text_width(s[:lo], text_cfg)
+			x1 := render.text_width(s[:hi], text_cfg)
+			if clay.UI_AutoId()(
 			{
 				layout = {sizing = {clay.SizingFixed(x1 - x0), clay.SizingFixed(line_h)}},
-				backgroundColor = col.selection,
+				backgroundColor = c.selection,
 				floating = overlay_floating(f32(pad.left) + x0 - tf.scroll, y_off),
 			},
 			) {}
 		}
 
 		if tf.focused && math.mod(tf.blink, 1.06) < 0.53 {
-			if clay.UI()(
+			if clay.UI_AutoId()(
 			{
-				layout = {
-					sizing = {clay.SizingFixed(border_px() * 2), clay.SizingFixed(line_h)},
-				},
-				backgroundColor = col.primary,
+				layout = {sizing = {clay.SizingFixed(th.border_px() * 2), clay.SizingFixed(line_h)}},
+				backgroundColor = c.primary,
 				floating = overlay_floating(f32(pad.left) + cursor_x - tf.scroll, y_off),
 			},
 			) {}
@@ -134,8 +139,7 @@ text_field :: proc(
 	return res
 }
 
-
-@(private = "file")
+@(private)
 overlay_floating :: proc(x, y: f32) -> clay.FloatingElementConfig {
 	return {
 		attachTo = .Parent,
@@ -146,26 +150,13 @@ overlay_floating :: proc(x, y: f32) -> clay.FloatingElementConfig {
 	}
 }
 
-@(private = "file")
-measure :: proc(s: string, cfg: clay.TextElementConfig) -> f32 {
-	if len(s) == 0 {return 0}
-	cfg := cfg
-	chars := cast([^]c.char)raw_data(s)
-	slice := clay.StringSlice {
-		length    = c.int32_t(len(s)),
-		chars     = chars,
-		baseChars = chars,
-	}
-	return measure_text(slice, &cfg, nil).width
-}
-
-@(private = "file")
+@(private)
 index_at_x :: proc(s: string, cfg: clay.TextElementConfig, x: f32) -> int {
 	prev: f32 = 0
 	i := 0
 	for i < len(s) {
 		_, size := utf8.decode_rune_in_string(s[i:])
-		next := measure(s[:i + size], cfg)
+		next := render.text_width(s[:i + size], cfg)
 		if x < (prev + next) * 0.5 {return i}
 		prev = next
 		i += size
@@ -173,37 +164,37 @@ index_at_x :: proc(s: string, cfg: clay.TextElementConfig, x: f32) -> int {
 	return len(s)
 }
 
-@(private = "file")
+@(private)
 prev_rune :: proc(b: []u8, i: int) -> int {
 	if i <= 0 {return 0}
 	_, size := utf8.decode_last_rune_in_bytes(b[:i])
 	return i - size
 }
 
-@(private = "file")
+@(private)
 next_rune :: proc(b: []u8, i: int) -> int {
 	if i >= len(b) {return len(b)}
 	_, size := utf8.decode_rune_in_bytes(b[i:])
 	return i + size
 }
 
-@(private = "file")
+@(private)
 sel_range :: proc(tf: ^TextField) -> (lo, hi: int) {
 	return min(tf.cursor, tf.anchor), max(tf.cursor, tf.anchor)
 }
 
-@(private = "file")
+@(private)
 has_selection :: proc(tf: ^TextField) -> bool {
 	return tf.cursor != tf.anchor
 }
 
-@(private = "file")
+@(private)
 move_cursor :: proc(tf: ^TextField, pos: int, extend: bool) {
 	tf.cursor = pos
 	if !extend {tf.anchor = pos}
 }
 
-@(private = "file")
+@(private)
 delete_range :: proc(tf: ^TextField, lo, hi: int) {
 	if hi <= lo {return}
 	remove_range(&tf.buf, lo, hi)
@@ -211,7 +202,7 @@ delete_range :: proc(tf: ^TextField, lo, hi: int) {
 	tf.anchor = lo
 }
 
-@(private = "file")
+@(private)
 delete_selection :: proc(tf: ^TextField) -> bool {
 	if !has_selection(tf) {return false}
 	lo, hi := sel_range(tf)
@@ -219,7 +210,7 @@ delete_selection :: proc(tf: ^TextField) -> bool {
 	return true
 }
 
-@(private = "file")
+@(private)
 insert_string :: proc(tf: ^TextField, s: string) {
 	delete_selection(tf)
 	bytes := transmute([]u8)s
@@ -228,20 +219,23 @@ insert_string :: proc(tf: ^TextField, s: string) {
 	tf.anchor = tf.cursor
 }
 
-@(private = "file")
+@(private)
 key_hit :: proc(k: rl.KeyboardKey) -> bool {
 	return rl.IsKeyPressed(k) || rl.IsKeyPressedRepeat(k)
 }
 
-@(private = "file")
+@(private)
 handle_input :: proc(
 	tf: ^TextField,
 	id: clay.ElementId,
 	pad: clay.Padding,
 	text: clay.TextElementConfig,
+	disabled: bool,
 ) -> (
 	res: TextFieldResult,
 ) {
+	if disabled {return}
+
 	data := clay.GetElementData(id)
 	s := string(tf.buf[:])
 

@@ -1,8 +1,10 @@
-package kiln
+package display
 
 // Small status/count pill. Non-interactive, meant for labels next to titles or inside rows.
 
 import clay "lib:kiln/clay-odin"
+import fd "lib:kiln/foundation"
+import th "lib:kiln/theme"
 
 // Color role of a badge. The background is a tint of the theme color.
 BadgeVariant :: enum {
@@ -16,37 +18,42 @@ BadgeVariant :: enum {
 //
 //   kiln.badge("Neu")
 //   kiln.badge("Online", .Primary, dot = true)
-//   kiln.badge("3", .Info, id = kiln.id_local("count"))   // explicit ID, e.g. in loops
-badge :: proc(label: string, variant := BadgeVariant.Neutral, dot := false, id := clay.ElementId{}) {
-	c := current_theme
-	eid := resolve_id(id, label)
+//   kiln.badge("3", .Info, id = kiln.id_local("count"))   // explicit id, e.g. in loops
+badge :: proc(
+	label: string,
+	variant := BadgeVariant.Neutral,
+	dot := false,
+	id := clay.ElementId{},
+) {
+	c := th.current()
+	eid := fd.resolve_id(id, label)
 
 	bg, fg: clay.Color
 	switch variant {
 	case .Neutral:
 		bg, fg = c.surface_1, c.text_muted
 	case .Primary:
-		bg, fg = color_alpha(c.primary, 0.2), c.primary
+		bg, fg = th.color_alpha(c.primary, c.tint_alpha), c.primary
 	case .Info:
-		bg, fg = color_alpha(c.secondary, 0.2), c.secondary
+		bg, fg = th.color_alpha(c.secondary, c.tint_alpha), c.secondary
 	case .Danger:
-		bg, fg = color_alpha(c.danger, 0.2), c.danger
+		bg, fg = th.color_alpha(c.danger, c.tint_alpha), c.danger
 	}
 
 	if clay.UI(eid)(
 	{
 		layout = {
 			sizing = {clay.SizingFit(), clay.SizingFit()},
-			padding = pad_xy(.SM, .XS),
-			childGap = sp(.XS),
+			padding = th.pad_xy(.SM, .XS),
+			childGap = th.sp(.XS),
 			childAlignment = {y = .Center},
 		},
 		backgroundColor = bg,
-		cornerRadius = radius(.Full),
+		cornerRadius = th.radius(.Full),
 	},
 	) {
 		if dot {
-			d := size_px(.SM)
+			d := th.size_px(.Dot)
 			if clay.UI_AutoId()(
 			{
 				layout = {sizing = {clay.SizingFixed(d), clay.SizingFixed(d)}},
@@ -56,7 +63,7 @@ badge :: proc(label: string, variant := BadgeVariant.Neutral, dot := false, id :
 			) {}
 		}
 		if len(label) > 0 {
-			clay.Text(label, text_style(.Caption, fg))
+			clay.Text(label, th.text_style(.Caption, fg))
 		}
 	}
 }

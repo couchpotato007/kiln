@@ -8,24 +8,40 @@ NODES := []kiln.TreeNode {
 		label = "src",
 		children = []kiln.TreeNode {
 			{label = "main.odin"},
-			{label = "app.odin"},
+			{
+				label = "counter",
+				children = []kiln.TreeNode{{label = "counter.odin"}},
+			},
+		},
+	},
+	{
+		label = "lib",
+		children = []kiln.TreeNode {
 			{
 				label = "kiln",
 				children = []kiln.TreeNode {
-					{label = "widget_button.odin"},
-					{label = "widget_slider.odin"},
-					{label = "widget_tree.odin"},
-					{label = "theme.odin"},
+					{label = "kiln.odin"},
+					{
+						label = "theme",
+						children = []kiln.TreeNode {
+							{label = "theme.odin"},
+							{label = "units.odin"},
+						},
+					},
+					{
+						label = "controls",
+						children = []kiln.TreeNode {
+							{label = "button.odin"},
+							{label = "slider.odin"},
+						},
+					},
 				},
 			},
 		},
 	},
 	{
 		label = "resources",
-		children = []kiln.TreeNode {
-			{label = "Iosevka-Regular.ttf"},
-			{label = "Iosevka-SemiBold.ttf"},
-		},
+		children = []kiln.TreeNode{{label = "Iosevka-Regular.ttf"}, {label = "Iosevka-SemiBold.ttf"}},
 	},
 	{label = "README.md"},
 	{label = "flake.nix"},
@@ -47,7 +63,7 @@ Msg :: union #no_nil {
 }
 
 init :: proc() -> Model {
-	return {nodes = NODES[:], selected = -1}
+	return {nodes = NODES, selected = -1}
 }
 
 update :: proc(m: ^Model, msg: Msg) {
@@ -60,23 +76,21 @@ update :: proc(m: ^Model, msg: Msg) {
 }
 
 view :: proc(m: ^Model, out: ^[dynamic]Msg) {
-	muted := kiln.current_theme.text_muted
+	muted := kiln.theme().text_muted
 
 	if kiln.card() {
 		kiln.label("Dateibaum", .Subtitle)
-		kiln.label("Pfeil klappt zu, Zeile wählt.", .Caption, muted)
+		kiln.label("Pfeil klappt auf/zu, Zeile wählt aus.", .Caption, muted)
 
 		if kiln.scroll_view(260) {
-			sel := m.selected
-			if kiln.tree(&sel, m.nodes) {
-				append(out, Select_Node{sel})
-			}
+			selected := m.selected
+			if kiln.tree(&selected, m.nodes) {append(out, Select_Node{selected})}
 		}
 
 		kiln.separator()
-		if m.selected >= 0 {
-			if kiln.hstack(.SM) {
-				kiln.label(fmt.tprintf("Ausgewählt: Index %d", m.selected), .Body, kiln.current_theme.secondary)
+		if node, ok := kiln.tree_find(m.nodes, m.selected); ok {
+			if kiln.hstack() {
+				kiln.label(fmt.tprintf("Ausgewählt: %s", node.label), .Body, kiln.theme().secondary)
 				kiln.spacer()
 				if kiln.button("Auswahl aufheben", .Ghost) {append(out, Clear_Selection{})}
 			}

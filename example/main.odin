@@ -17,7 +17,7 @@ Set_Flavor :: struct {
 }
 
 Set_Look :: struct {
-	look: int,
+	look: Look,
 }
 
 // Presets that only change the theme's metrics, no widget code is involved.
@@ -31,33 +31,26 @@ Look :: enum {
 LOOK_NAMES := [?]string{"Standard", "Eckig", "Rund", "Kompakt"}
 
 apply_look :: proc(look: Look) {
-	t := kiln.current_theme
-	t.metrics = kiln.default_metrics()
+	m := kiln.default_metrics()
 	switch look {
 	case .Standard:
 	case .Eckig:
-		t.radii = {
-			.None = 0,
-			.SM   = 0,
-			.MD   = 0,
-			.LG   = 0,
-			.Full = 0,
-		}
+		m.radii = {}
 	case .Rund:
-		t.radii = {
+		m.radii = {
 			.None = 0,
 			.SM   = 8,
 			.MD   = 16,
 			.LG   = 24,
 			.Full = 9999,
 		}
-		t.sizes[.LG] = 40
+		m.sizes[.Control] = 40
 	case .Kompakt:
-		for s in kiln.Space {t.spacing[s] *= 0.7}
-		t.sizes[.LG] = 28
-		t.font_base = 14
+		for s in kiln.Space {m.spacing[s] *= 0.7}
+		m.sizes[.Control] = 28
+		m.font_base = 14
 	}
-	kiln.set_theme(t)
+	kiln.set_metrics(m)
 }
 
 Msg :: union #no_nil {
@@ -76,7 +69,8 @@ Msg :: union #no_nil {
 
 Model :: struct {
 	tab:      int,
-	look:     int,
+	flavor:   kiln.Flavor,
+	look:     Look,
 	counter:  counter.Model,
 	greeter:  greeter.Model,
 	todo:     todo.Model,
@@ -87,7 +81,7 @@ Model :: struct {
 	overlays: overlays.Model,
 }
 
-tab_names := [?]string {
+TAB_NAMES := [?]string {
 	"Zähler",
 	"Begrüßung",
 	"Aufgaben",
@@ -107,7 +101,6 @@ FLAVOR_NAMES := [kiln.Flavor]string {
 
 init :: proc() -> Model {
 	return {
-		tab = 0,
 		counter = counter.init(),
 		greeter = greeter.init(),
 		todo = todo.init(),
@@ -140,60 +133,57 @@ update :: proc(m: ^Model, msg: Msg) {
 	case Tab_Selected:
 		m.tab = int(v)
 	case Set_Flavor:
-		kiln.set_flavor(v.flavor)
+		m.flavor = v.flavor
+		kiln.set_colors(kiln.catppuccin_colors(v.flavor))
 	case Set_Look:
 		m.look = v.look
-		apply_look(Look(v.look))
+		apply_look(v.look)
 	}
 }
 
 view :: proc(m: ^Model, out: ^[dynamic]Msg) {
-	if kiln.hstack(.SM, fill = .Both) {
-		if kiln.vstack(.MD, fill = .Both) {
-			if kiln.hstack(.SM) {
-				kiln.label("Meine App", .Title, kiln.current_theme.primary)
-				kiln.spacer()
-				for f in kiln.Flavor {
-					variant := kiln.ButtonVariant.Secondary
-					if f == kiln.current_flavor {variant = .Primary}
-					if kiln.button(FLAVOR_NAMES[f], variant) {append(out, Set_Flavor{f})}
-				}
-			}
+	muted := kiln.theme().text_muted
 
-			if kiln.hstack(.SM) {
-				kiln.label("Stil", .Caption, kiln.current_theme.text_muted)
-				look := m.look
-				if kiln.segmented(&look, LOOK_NAMES[:]) {append(out, Set_Look{look})}
-			}
-
-			tab := m.tab
-			if kiln.tabs(&tab, tab_names[:]) {
-				append(out, Tab_Selected(tab))
-			}
-
-			switch m.tab {
-			case 0:
-				kiln.embed(out, &m.counter, counter.view)
-			case 1:
-				kiln.embed(out, &m.greeter, greeter.view)
-			case 2:
-				kiln.embed(out, &m.todo, todo.view)
-			case 3:
-				kiln.embed(out, &m.settings, settings.view)
-			case 4:
-				kiln.embed(out, &m.people, people.view)
-			case 5:
-				kiln.embed(out, &m.gallery, gallery.view)
-			case 6:
-				kiln.embed(out, &m.treeview, treeview.view)
-			case 7:
-				kiln.embed(out, &m.overlays, overlays.view)
+	if kiln.vstack(.MD, fill = .Both) {
+		if kiln.hstack(.SM) {
+			kiln.label("Meine App", .Title, kiln.theme().primary)
+			kiln.spacer()
+			for f in kiln.Flavor {
+				variant := kiln.ButtonVariant.Primary if f == m.flavor else .Secondary
+				if kiln.button(FLAVOR_NAMES[f], variant) {append(out, Set_Flavor{f})}
 			}
 		}
 
+		if kiln.hstack(.SM) {
+			kiln.label("Stil", .Caption, muted)
+			look := int(m.look)
+			if kiln.segmented(&look, LOOK_NAMES[:]) {append(out, Set_Look{Look(look)})}
+		}
+
+		tab := m.tab
+		if kiln.tabs(&tab, TAB_NAMES[:]) {append(out, Tab_Selected(tab))}
+
+		switch m.tab {
+		case 0:
+			kiln.embed(out, &m.counter, counter.view)
+		case 1:
+			kiln.embed(out, &m.greeter, greeter.view)
+		case 2:
+			kiln.embed(out, &m.todo, todo.view)
+		case 3:
+			kiln.embed(out, &m.settings, settings.view)
+		case 4:
+			kiln.embed(out, &m.people, people.view)
+		case 5:
+			kiln.embed(out, &m.gallery, gallery.view)
+		case 6:
+			kiln.embed(out, &m.treeview, treeview.view)
+		case 7:
+			kiln.embed(out, &m.overlays, overlays.view)
+		}
 	}
 }
 
 main :: proc() {
-	kiln.run(kiln.App(Model, Msg){init = init, update = update, view = view}, title = "Meine App")
+	kiln.run(kiln.App(Model, Msg){init = init, update = update, view = view}, {title = "Meine App"})
 }

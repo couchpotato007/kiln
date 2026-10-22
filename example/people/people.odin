@@ -80,7 +80,7 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 	has_selection := m.selected >= 0 && m.selected < len(m.people)
 
 	if kiln.card() {
-		if kiln.hstack(.SM) {
+		if kiln.hstack() {
 			kiln.label("Personen", .Subtitle)
 			kiln.spacer()
 			if i, ok := kiln.menu(MENU_ITEMS[:], "Aktionen", !has_selection); ok {
@@ -94,13 +94,11 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 			rows[i][0], rows[i][1], rows[i][2] = p.name, p.role, p.city
 		}
 
-		sel := m.selected
-		if kiln.table(&sel, COLUMNS[:], rows) {
-			append(out, Select_Row{sel})
-		}
+		selected := m.selected
+		if kiln.table(&selected, COLUMNS[:], rows) {append(out, Select_Row{selected})}
 
 		if len(m.last_action) > 0 {
-			kiln.label(m.last_action, .Caption, kiln.current_theme.text_muted)
+			kiln.label(m.last_action, .Caption, kiln.theme().text_muted)
 		}
 	}
 }

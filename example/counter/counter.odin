@@ -45,11 +45,11 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 
 		step := m.step
 		if kiln.slider(&step, 1, 10) {
-			append(out, Set_Step{step = step})
+			append(out, Set_Step{step})
 		}
-		kiln.label(fmt.tprintf("Step: %d", step))
+		kiln.label(fmt.tprintf("Schritt: %d", m.step))
 
-		if kiln.hstack(.SM) {
+		if kiln.hstack() {
 			if kiln.button("-", .Secondary) {append(out, Dec{})}
 			if kiln.button("+") {append(out, Inc{})}
 			kiln.spacer()

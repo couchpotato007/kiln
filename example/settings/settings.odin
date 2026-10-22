@@ -66,7 +66,7 @@ update :: proc(m: ^Model, msg: Msg) {
 }
 
 view :: proc(m: ^Model, out: ^[dynamic]Msg) {
-	muted := kiln.current_theme.text_muted
+	muted := kiln.theme().text_muted
 
 	if kiln.card(.LG, .MD) {
 		kiln.label("Einstellungen", .Subtitle)
@@ -96,15 +96,13 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 
 		if kiln.vstack(.XS) {
 			kiln.label(fmt.tprintf("Lautstärke: %d%%", m.volume), .Caption, muted)
-			vol := m.volume
-			if kiln.slider(&vol, 0, 100) {
-				append(out, Set_Volume{vol})
-			}
+			volume := m.volume
+			if kiln.slider(&volume, 0, 100) {append(out, Set_Volume{volume})}
 		}
 
 		if kiln.accordion("Erweitert") {
 			kiln.label("Hier landen seltene Optionen.", .Caption, muted)
-			if kiln.hstack(.SM) {
+			if kiln.hstack() {
 				kiln.spacer()
 				if kiln.button("Zurücksetzen", .Danger) {append(out, Reset{})}
 			}
@@ -124,7 +122,7 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 				m.volume,
 			),
 			.Body,
-			kiln.current_theme.secondary,
+			kiln.theme().secondary,
 		)
 	}
 }

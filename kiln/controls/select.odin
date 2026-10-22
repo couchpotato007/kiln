@@ -1,8 +1,8 @@
-package kiln
-
+package controls
 
 import clay "lib:kiln/clay-odin"
-import rl "vendor:raylib"
+import fd "lib:kiln/foundation"
+import th "lib:kiln/theme"
 
 // Selected option index. The zero value (nil) means "nothing selected", so the placeholder is shown.
 // Read it with `if i, ok := sel.?; ok { ... }`. The open/closed state of the list is kept
@@ -15,7 +15,7 @@ Select :: Maybe(int)
 //   lang := m.language
 //   if kiln.select(&lang, LANGUAGES[:], "Bitte wählen...") { append(out, Set_Language{lang}) }
 //
-// Without `id` the ID is "select" scoped to the parent, so several selects in the same parent
+// Without `id` the id is "select" scoped to the parent, so several selects in the same parent
 // need an explicit `id`.
 select :: proc(
 	selected: ^Select,
@@ -24,22 +24,18 @@ select :: proc(
 	disabled := false,
 	id := clay.ElementId{},
 ) -> bool {
-	c := current_theme
-	eid := resolve_id(id, "select")
+	c := th.current()
+	eid := fd.resolve_id(id, "select")
+	list_id := fd.child_id(eid, "list")
 	changed := false
-	list_id := clay.ID("select_list", eid.id)
 
-	s := interact(eid, disabled)
-	if s.clicked {popup_set(eid, !popup_is_open(eid))}
-	if disabled {popup_set(eid, false)}
-	if popup_is_open(eid) {
-		outside :=
-			rl.IsMouseButtonPressed(.LEFT) && !clay.PointerOver(eid) && !clay.PointerOver(list_id)
-		if outside || rl.IsKeyPressed(.ESCAPE) {popup_set(eid, false)}
-	}
-	open := popup_is_open(eid)
+	s := fd.interact(eid, disabled)
+	if s.clicked {fd.popup_set(eid, !fd.popup_is_open(eid))}
+	if disabled {fd.popup_set(eid, false)}
+	fd.popup_dismiss(eid, list_id)
+	open := fd.popup_is_open(eid)
 
-	h := anim(eid, 0, (s.hovered || open) ? 1 : 0)
+	h := fd.anim(eid, 0, (s.hovered || open) ? 1 : 0)
 	data := clay.GetElementData(eid)
 
 	current := -1
@@ -47,7 +43,7 @@ select :: proc(
 		current = i
 	}
 
-	text := text_style(.Body, c.text)
+	text := th.text_style(.Body, c.text)
 	shown := placeholder
 	if current >= 0 {
 		shown = options[current]
@@ -59,49 +55,46 @@ select :: proc(
 	if clay.UI(eid)(
 	{
 		layout = {
-			sizing = {clay.SizingGrow(), size_control_height()},
-			padding = pad_xy(.MD, .None),
-			childGap = sp(.SM),
+			sizing = {clay.SizingGrow(), th.control_height()},
+			padding = th.pad_xy(.MD, .None),
+			childGap = th.sp(.SM),
 			childAlignment = {y = .Center},
 		},
 		backgroundColor = c.bg_sunken,
-		cornerRadius = radius(.MD),
-		border = border_box(color_lerp(c.border, c.primary, h)),
+		cornerRadius = th.radius(.MD),
+		border = th.border_box(th.color_mix(c.border, c.primary, h)),
 	},
 	) {
 		clay.Text(shown, text)
 		if clay.UI_AutoId()({layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(0)}}}) {}
-		clay.Text(open ? "^" : "v", text_style(.Body, c.text_muted))
+		clay.Text(open ? "^" : "v", th.text_style(.Body, c.text_muted))
 
 		if open {
 			if clay.UI(list_id)(
 			{
 				layout = {
 					layoutDirection = .TopToBottom,
-					sizing = {
-						clay.SizingFixed(data.found ? data.boundingBox.width : px(200)),
-						clay.SizingFit(),
-					},
-					padding = pad_all(.XS),
+					sizing = {width = clay.SizingFit({min = data.found ? data.boundingBox.width : 0})},
+					padding = th.pad_all(.XS),
 				},
 				backgroundColor = c.surface_0,
-				cornerRadius = radius(.MD),
-				border = border_box(c.border_strong),
+				cornerRadius = th.radius(.MD),
+				border = th.border_box(c.border_strong),
 				floating = {
 					attachTo = .Parent,
 					attachment = {element = .LeftTop, parent = .LeftBottom},
-					offset = {0, space_px(.XS)},
-					zIndex = 100,
+					offset = {0, th.space_px(.XS)},
+					zIndex = fd.Z_POPUP,
 					pointerCaptureMode = .Capture,
 				},
 			},
 			) {
 				for opt, i in options {
-					item_id := clay.ID("select_item", eid.id * 1000 + u32(i))
-					is := interact(item_id)
+					item_id := fd.child_id(eid, "item", i)
+					is := fd.interact(item_id)
 					if is.clicked {
 						selected^ = i
-						popup_set(eid, false)
+						fd.popup_set(eid, false)
 						changed = true
 					}
 					bg: clay.Color
@@ -111,13 +104,13 @@ select :: proc(
 					{
 						layout = {
 							sizing = {clay.SizingGrow(), clay.SizingFit()},
-							padding = pad_xy(.MD, .SM),
+							padding = th.pad_xy(.MD, .SM),
 						},
 						backgroundColor = bg,
-						cornerRadius = radius(.SM),
+						cornerRadius = th.radius(.SM),
 					},
 					) {
-						clay.Text(opt, text_style(.Body, c.text))
+						clay.Text(opt, th.text_style(.Body, c.text))
 					}
 				}
 			}

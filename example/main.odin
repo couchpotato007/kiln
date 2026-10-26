@@ -1,189 +1,195 @@
 package main
 
-import "counter"
-import "gallery"
-import "greeter"
+// Demo app: one shell with navigation and six pages, each a self-contained Elm-style module.
+//
+// The shell adapts to the window:
+//   Expanded  sidebar with icons and labels
+//   Medium    narrow rail with icons (labels as tooltips)
+//   Compact   top bar with a menu button that opens the navigation in a drawer
+//
+//   odin run example -collection:lib=.
+//   odin run example -collection:lib=. -define:KILN_SNAPSHOT=true -define:START_PAGE=2
+
+import "components"
+import "dashboard"
+import "files"
 import "lib:kiln"
-import "overlays"
 import "people"
 import "settings"
-import "todo"
-import "treeview"
+import "tasks"
 
-Tab_Selected :: distinct int
+// First page shown (index into `Page`), handy for snapshots of a specific page.
+START_PAGE :: #config(START_PAGE, 0)
 
-Set_Flavor :: struct {
-	flavor: kiln.Flavor,
+Page :: enum {
+	Dashboard,
+	Tasks,
+	People,
+	Files,
+	Settings,
+	Components,
 }
 
-Set_Look :: struct {
-	look: Look,
+PAGES := [Page]kiln.NavItem {
+	.Dashboard  = {"◆", "Übersicht"},
+	.Tasks      = {"✓", "Aufgaben"},
+	.People     = {"●", "Personen"},
+	.Files      = {"■", "Dateien"},
+	.Settings   = {"⚙", "Einstellungen"},
+	.Components = {"★", "Komponenten"},
 }
 
-// Presets that only change the theme's metrics, no widget code is involved.
-Look :: enum {
-	Standard,
-	Eckig,
-	Rund,
-	Kompakt,
+SUBTITLES := [Page]string {
+	.Dashboard  = "Kennzahlen, Verlauf und Systemstatus auf einen Blick.",
+	.Tasks      = "Aufgaben anlegen, priorisieren und abhaken.",
+	.People     = "Suchen, sortieren und bearbeiten. Schmale Fenster zeigen eine Liste.",
+	.Files      = "Ein Dateibaum mit Vorschau.",
+	.Settings   = "Ein Formular, dessen Beschriftungen bei wenig Platz über die Felder wandern.",
+	.Components = "Alle Widgets in einer Übersicht.",
 }
 
-LOOK_NAMES := [?]string{"Standard", "Eckig", "Rund", "Kompakt"}
+SIDEBAR_WIDTH :: 232
+RAIL_WIDTH :: 64
+CONTENT_MAX_WIDTH :: 1180
 
-apply_look :: proc(look: Look) {
-	m := kiln.default_metrics()
-	switch look {
-	case .Standard:
-	case .Eckig:
-		m.radii = {}
-	case .Rund:
-		m.radii = {
-			.None = 0,
-			.SM   = 8,
-			.MD   = 16,
-			.LG   = 24,
-			.Full = 9999,
-		}
-		m.sizes[.Control] = 40
-	case .Kompakt:
-		for s in kiln.Space {m.spacing[s] *= 0.7}
-		m.sizes[.Control] = 28
-		m.font_base = 14
-	}
-	kiln.set_metrics(m)
+Go_To :: struct {
+	page: Page,
 }
 
-Msg :: union #no_nil {
-	counter.Msg,
-	greeter.Msg,
-	todo.Msg,
-	settings.Msg,
+Msg :: union {
+	Go_To,
+	dashboard.Msg,
+	tasks.Msg,
 	people.Msg,
-	gallery.Msg,
-	treeview.Msg,
-	overlays.Msg,
-	Tab_Selected,
-	Set_Flavor,
-	Set_Look,
+	files.Msg,
+	settings.Msg,
+	components.Msg,
 }
 
 Model :: struct {
-	tab:      int,
-	flavor:   kiln.Flavor,
-	look:     Look,
-	counter:  counter.Model,
-	greeter:  greeter.Model,
-	todo:     todo.Model,
-	settings: settings.Model,
-	people:   people.Model,
-	gallery:  gallery.Model,
-	treeview: treeview.Model,
-	overlays: overlays.Model,
-}
-
-TAB_NAMES := [?]string {
-	"Zähler",
-	"Begrüßung",
-	"Aufgaben",
-	"Einstellungen",
-	"Personen",
-	"Galerie",
-	"Dateibaum",
-	"Overlays",
-}
-
-FLAVOR_NAMES := [kiln.Flavor]string {
-	.Mocha     = "Mocha",
-	.Macchiato = "Macchiato",
-	.Frappe    = "Frappé",
-	.Latte     = "Latte",
+	page:       Page,
+	dashboard:  dashboard.Model,
+	tasks:      tasks.Model,
+	people:     people.Model,
+	files:      files.Model,
+	settings:   settings.Model,
+	components: components.Model,
 }
 
 init :: proc() -> Model {
 	return {
-		counter = counter.init(),
-		greeter = greeter.init(),
-		todo = todo.init(),
-		settings = settings.init(),
+		page = Page(START_PAGE),
+		dashboard = dashboard.init(),
+		tasks = tasks.init(),
 		people = people.init(),
-		gallery = gallery.init(),
-		treeview = treeview.init(),
-		overlays = overlays.init(),
+		files = files.init(),
+		settings = settings.init(),
+		components = components.init(),
 	}
 }
 
 update :: proc(m: ^Model, msg: Msg) {
 	switch v in msg {
-	case counter.Msg:
-		counter.update(&m.counter, v)
-	case greeter.Msg:
-		greeter.update(&m.greeter, v)
-	case todo.Msg:
-		todo.update(&m.todo, v)
-	case settings.Msg:
-		settings.update(&m.settings, v)
+	case Go_To:
+		m.page = v.page
+	case dashboard.Msg:
+		dashboard.update(&m.dashboard, v)
+	case tasks.Msg:
+		tasks.update(&m.tasks, v)
 	case people.Msg:
 		people.update(&m.people, v)
-	case gallery.Msg:
-		gallery.update(&m.gallery, v)
-	case treeview.Msg:
-		treeview.update(&m.treeview, v)
-	case overlays.Msg:
-		overlays.update(&m.overlays, v)
-	case Tab_Selected:
-		m.tab = int(v)
-	case Set_Flavor:
-		m.flavor = v.flavor
-		kiln.set_colors(kiln.catppuccin_colors(v.flavor))
-	case Set_Look:
-		m.look = v.look
-		apply_look(v.look)
+	case files.Msg:
+		files.update(&m.files, v)
+	case settings.Msg:
+		settings.update(&m.settings, v)
+	case components.Msg:
+		components.update(&m.components, v)
 	}
 }
 
 view :: proc(m: ^Model, out: ^[dynamic]Msg) {
-	muted := kiln.theme().text_muted
+	screen := kiln.screen()
 
-	if kiln.vstack(.MD, fill = .Both) {
-		if kiln.hstack(.SM) {
-			kiln.label("Meine App", .Title, kiln.theme().primary)
-			kiln.spacer()
-			for f in kiln.Flavor {
-				variant := kiln.ButtonVariant.Primary if f == m.flavor else .Secondary
-				if kiln.button(FLAVOR_NAMES[f], variant) {append(out, Set_Flavor{f})}
+	if kiln.row(gap = .None, fill = .Both, align = .Start) {
+		if screen != .Compact {sidebar(m, out, collapsed = screen == .Medium)}
+
+		if kiln.column(gap = .None, fill = .Both) {
+			if screen == .Compact {top_bar(m)}
+
+			if kiln.scroll(padding = kiln.by_screen(kiln.Space.MD, .LG, .XL)) {
+				if kiln.column(align = .Center) {
+					if kiln.column(.LG, max_width = CONTENT_MAX_WIDTH) {
+						if kiln.column(.XS) {
+							kiln.text(PAGES[m.page].label, .Headline)
+							kiln.text(SUBTITLES[m.page], .Body, .Muted)
+						}
+						page(m, out)
+					}
+				}
 			}
 		}
+	}
 
-		if kiln.hstack(.SM) {
-			kiln.label("Stil", .Caption, muted)
-			look := int(m.look)
-			if kiln.segmented(&look, LOOK_NAMES[:]) {append(out, Set_Look{Look(look)})}
-		}
-
-		tab := m.tab
-		if kiln.tabs(&tab, TAB_NAMES[:]) {append(out, Tab_Selected(tab))}
-
-		switch m.tab {
-		case 0:
-			kiln.embed(out, &m.counter, counter.view)
-		case 1:
-			kiln.embed(out, &m.greeter, greeter.view)
-		case 2:
-			kiln.embed(out, &m.todo, todo.view)
-		case 3:
-			kiln.embed(out, &m.settings, settings.view)
-		case 4:
-			kiln.embed(out, &m.people, people.view)
-		case 5:
-			kiln.embed(out, &m.gallery, gallery.view)
-		case 6:
-			kiln.embed(out, &m.treeview, treeview.view)
-		case 7:
-			kiln.embed(out, &m.overlays, overlays.view)
+	// Navigation for compact screens.
+	if kiln.drawer("nav") {
+		brand(collapsed = false)
+		if p, ok := kiln.nav(m.page, PAGES); ok {
+			append(out, Go_To{p})
+			kiln.hide()
 		}
 	}
 }
 
+page :: proc(m: ^Model, out: ^[dynamic]Msg) {
+	switch m.page {
+	case .Dashboard:
+		kiln.embed(out, &m.dashboard, dashboard.view)
+	case .Tasks:
+		kiln.embed(out, &m.tasks, tasks.view)
+	case .People:
+		kiln.embed(out, &m.people, people.view)
+	case .Files:
+		kiln.embed(out, &m.files, files.view)
+	case .Settings:
+		kiln.embed(out, &m.settings, settings.view)
+	case .Components:
+		kiln.embed(out, &m.components, components.view)
+	}
+}
+
+sidebar :: proc(m: ^Model, out: ^[dynamic]Msg, collapsed: bool) {
+	if kiln.column(
+		.SM,
+		.MD,
+		fill = .Height,
+		width = collapsed ? RAIL_WIDTH : SIDEBAR_WIDTH,
+		bg = .Sunken,
+	) {
+		brand(collapsed)
+		if p, ok := kiln.nav(m.page, PAGES, collapsed); ok {append(out, Go_To{p})}
+		kiln.spacer()
+		if !collapsed {kiln.text("Strg +/− ändert den Zoom", .Caption, .Faint)}
+	}
+	kiln.separator()
+}
+
+brand :: proc(collapsed: bool) {
+	if kiln.row(.SM, padding = .SM) {
+		kiln.text("◆", .Title, .Primary)
+		if !collapsed {kiln.text("Kiln Demo", .Title)}
+	}
+}
+
+top_bar :: proc(m: ^Model) {
+	if kiln.row(.SM, padding = .SM, bg = .Sunken) {
+		if kiln.button("☰", .Ghost) {kiln.show("nav")}
+		kiln.text("Kiln Demo", .Subtitle)
+		kiln.spacer()
+		kiln.badge(PAGES[m.page].label, .Primary)
+	}
+	kiln.separator()
+}
+
 main :: proc() {
-	kiln.run(kiln.App(Model, Msg){init = init, update = update, view = view}, {title = "Meine App"})
+	kiln.run(kiln.App(Model, Msg){init = init, update = update, view = view}, {title = "Kiln Demo"})
 }

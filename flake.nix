@@ -7,6 +7,7 @@
       url = "github:couchpotato007/odin-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    jailed-agents.url = "github:andersonjoseph/jailed-agents";
   };
 
   outputs =
@@ -14,6 +15,7 @@
       self,
       nixpkgs,
       odin-overlay,
+      jailed-agents,
     }:
     let
       system = "x86_64-linux";
@@ -44,6 +46,19 @@
           libxcursor
           xinput
           libxi
+
+          (jailed-agents.lib.${system}.makeJailedClaudeCode {
+            extraPkgs = with pkgs; [
+              odin-bin.stable
+              ols-bin.stable
+              clang
+              clang-tools
+              cmake
+              raylib
+            ];
+            extraReadwriteDirs = [ "~/.claude" ];
+          })
+
         ];
 
         nativeBuildInputs = with pkgs; [

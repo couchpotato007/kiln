@@ -25,6 +25,9 @@ jobs:
         with:
           release: dev-2026-10
           token: ${{ secrets.GITHUB_TOKEN }}
+      # Odin releases ship vendor:stb without the Linux libraries; kiln imports stb, so even
+      # `odin doc` panics until they are built.
+      - run: sh "$(odin root)/vendor/stb/src/build_stb.sh"
       - uses: withastro/action@v6
         with:
           path: ./docs

@@ -159,3 +159,63 @@ test_password_field :: proc(t: ^testing.T) {
 	testing.expect_value(t, m.text, "xy")
 	free_all(context.temp_allocator)
 }
+
+// Coverage (alpha) of the pixel at (x, y) of an SVG rendered at `size` pixels.
+@(private = "file")
+svg_alpha :: proc(src: string, size, x, y: int) -> u8 {
+	svg, ok := svg_parse(src)
+	defer svg_destroy(&svg)
+	if !ok {return 0}
+	return svg_rasterize(&svg, size, size, context.temp_allocator)[y * size + x].a
+}
+
+@(test)
+test_svg :: proc(t: ^testing.T) {
+	// A filled square covers its pixels fully, nothing outside.
+	square := `<svg viewBox="0 0 10 10"><rect x="2" y="2" width="6" height="6"/></svg>`
+	testing.expect_value(t, svg_alpha(square, 10, 5, 5), 255)
+	testing.expect_value(t, svg_alpha(square, 10, 1, 5), 0)
+	// Half a pixel of coverage at an edge.
+	half := `<svg viewBox="0 0 10 10"><path d="M2.5 0H10V10H2.5z"/></svg>`
+	testing.expect(t, abs(int(svg_alpha(half, 10, 2, 5)) - 128) <= 2)
+
+	// even-odd leaves a hole, nonzero (same winding) does not.
+	RINGS :: `<path d="M1 1h8v8h-8z M3 3h4v4h-4z"/>`
+	evenodd := `<svg viewBox="0 0 10 10" fill-rule="evenodd">` + RINGS + `</svg>`
+	nonzero := `<svg viewBox="0 0 10 10">` + RINGS + `</svg>`
+	testing.expect_value(t, svg_alpha(evenodd, 10, 5, 5), 0)
+	testing.expect_value(t, svg_alpha(nonzero, 10, 5, 5), 255)
+
+	// Strokes: a 2 wide line along y = 5 covers rows 4 and 5; round caps reach past the ends.
+	line := `<svg viewBox="0 0 10 10"><path d="M3 5H7" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round"/></svg>`
+	testing.expect_value(t, svg_alpha(line, 10, 5, 4), 255)
+	testing.expect_value(t, svg_alpha(line, 10, 5, 6), 0)
+	testing.expect(t, svg_alpha(line, 10, 2, 4) > 100)
+
+	// Arcs, relative commands, transforms and implicit line-tos after a move.
+	circle := `<svg viewBox="0 0 10 10"><g transform="translate(5 5)"><path d="M-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0z"/></g></svg>`
+	testing.expect_value(t, svg_alpha(circle, 10, 5, 5), 255)
+	testing.expect_value(t, svg_alpha(circle, 10, 0, 0), 0)
+	poly := `<svg viewBox="0 0 10 10"><path d="m1 1 8 0 0 8-8 0z"/></svg>`
+	testing.expect_value(t, svg_alpha(poly, 10, 5, 5), 255)
+
+	// One color (here currentColor) is monochrome, two colors are not.
+	mono, _ := svg_parse(ICON_CALENDAR.svg)
+	testing.expect(t, mono.mono)
+	svg_destroy(&mono)
+	colored, _ := svg_parse(`<svg viewBox="0 0 2 2"><rect width="1" height="1" fill="red"/><rect x="1" width="1" height="1" fill="#00f"/></svg>`)
+	testing.expect(t, !colored.mono)
+	svg_destroy(&colored)
+
+	// All built-in icons parse and draw something.
+	for ic in ([]Icon{ICON_CHECK, ICON_CLOSE, ICON_CHEVRON_DOWN, ICON_CHEVRON_UP, ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, ICON_MENU, ICON_MORE, ICON_PLUS, ICON_MINUS, ICON_SEARCH, ICON_CALENDAR, ICON_EYE, ICON_EYE_OFF, ICON_STAR}) {
+		svg, ok := svg_parse(ic.svg)
+		testing.expect(t, ok)
+		pixels := svg_rasterize(&svg, 24, 24, context.temp_allocator)
+		ink := 0
+		for p in pixels {ink += int(p.a)}
+		testing.expect(t, ink > 255 * 10)
+		svg_destroy(&svg)
+	}
+	free_all(context.temp_allocator)
+}

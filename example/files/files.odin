@@ -5,10 +5,11 @@ package files
 
 import "core:fmt"
 import "core:strings"
+import "../icons"
 import "lib:kiln"
 
-DIR :: "■"
-FILE :: "□"
+DIR :: icons.FOLDER
+FILE :: icons.FILE
 
 NODES := []kiln.TreeNode {
 	{
@@ -138,7 +139,7 @@ preview :: proc(m: ^Model, out: ^[dynamic]Msg) {
 			child := m.selected + 1
 			for c in node.children {
 				if kiln.list_item() {
-					kiln.text(c.icon, .Body, .Muted)
+					kiln.icon(c.icon, .Body, .Muted)
 					kiln.text(c.label)
 				}
 				if kiln.clicked() {append(out, Select{child})}

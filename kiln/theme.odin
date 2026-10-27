@@ -103,6 +103,7 @@ Metrics :: struct {
 	font_faces:     [TextStyle]FontFace,
 	font_files:     [FontFace]cstring, // paths, relative to the working directory
 	font_data:      [FontFace][]u8, // font files in memory (e.g. `#load`ed); win over `font_files`
+	font_fallbacks: [][]u8, // fonts in memory for characters the faces lack (CJK, symbols, ...), tried in order
 	anim_speed:     f32, // rate per second of hover / toggle fades
 	tooltip_delay:  f32, // seconds of hover before a tooltip shows
 	toast_duration: f32, // seconds a toast stays visible

@@ -201,8 +201,8 @@ counter_card :: proc(m: ^Model, out: ^[dynamic]Msg) {
 		if kiln.row() {
 			kiln.text(fmt.tprint(m.counter), .Headline, .Primary)
 			kiln.spacer()
-			if kiln.button("−", .Secondary) {append(out, Count{-m.step})}
-			if kiln.button("+") {append(out, Count{m.step})}
+			if kiln.button(kiln.ICON_MINUS, .Secondary) {append(out, Count{-m.step})}
+			if kiln.button(kiln.ICON_PLUS) {append(out, Count{m.step})}
 		}
 		kiln.text(fmt.tprintf("Schrittweite: %d", m.step), .Caption, .Muted)
 		if v, ok := kiln.slider(m.step, 1, 10); ok {append(out, Set_Step{v})}

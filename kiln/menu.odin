@@ -100,15 +100,35 @@ MenuItem :: struct {
 	danger:    bool, // drawn in the danger color (e.g. "Löschen")
 	disabled:  bool,
 	separator: bool,
+	icon:      Icon, // optional, before the label
 }
 
 // A button that opens a list of entries below it. Returns the index of the clicked entry:
 //
 //   if i, ok := kiln.menu("Aktionen", ITEMS[:]); ok { ... }
+//   if i, ok := kiln.menu(kiln.ICON_MORE, ITEMS[:], .Ghost); ok { ... }
 //
-// A single-character label ("⋯") gives a square icon button.
-menu :: proc(
+// An icon (or a single-character label) gives a square icon button.
+menu :: proc {
+	menu_label,
+	menu_icon,
+}
+
+menu_label :: proc(
 	label: string,
+	items: []MenuItem,
+	variant := ButtonVariant.Secondary,
+	disabled := false,
+	icon := Icon{},
+) -> (
+	index: int,
+	ok: bool,
+) {
+	return menu_impl(button_impl(label, icon, variant, disabled, false, .Default), items, disabled)
+}
+
+menu_icon :: proc(
+	icon: Icon,
 	items: []MenuItem,
 	variant := ButtonVariant.Secondary,
 	disabled := false,
@@ -116,7 +136,13 @@ menu :: proc(
 	index: int,
 	ok: bool,
 ) {
-	if button(label, variant, disabled) {
+	return menu_impl(button_impl("", icon, variant, disabled, false, .Default), items, disabled)
+}
+
+// The list of a menu whose button was just declared.
+@(private)
+menu_impl :: proc(clicked: bool, items: []MenuItem, disabled: bool) -> (index: int, ok: bool) {
+	if clicked {
 		popup_set(g_last.id, !popup_is_open(g_last.id))
 	}
 	trigger := g_last
@@ -244,11 +270,14 @@ menu_list :: proc(items: []MenuItem, list: Id, placement: clay.FloatingElementCo
 				layout = {
 					sizing = {clay.SizingGrow(), clay.SizingFit()},
 					padding = inset(.MD, .SM),
+					childGap = space(.SM),
+					childAlignment = {y = .Center},
 				},
 				backgroundColor = s.hovered ? c.surface_hover : {},
 				cornerRadius = corners(.SM),
 			},
 			) {
+				icon_element(item.icon, .Body, fg)
 				clay.TextDynamic(item.label, style)
 			}
 		}

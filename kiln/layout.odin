@@ -718,7 +718,7 @@ collapsible :: proc(title: string, open := false) -> bool {
 		cornerRadius = is_open ? {topLeft = r, topRight = r} : clay.CornerRadiusAll(r),
 	},
 	) {
-		text(is_open ? "▾" : "▸", .Body, .Muted)
+		icon_element(is_open ? ICON_CHEVRON_DOWN : ICON_CHEVRON_RIGHT, .Caption, g_theme.text_muted)
 		text(title, .Body)
 	}
 

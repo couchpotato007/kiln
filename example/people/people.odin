@@ -284,7 +284,7 @@ person_list :: proc(m: ^Model, out: ^[dynamic]Msg, shown: []int) {
 						kiln.text(fmt.tprintf("%s · %s", p.role, TEAM_NAMES[p.team]), .Caption, .Muted)
 					}
 					if !p.active {kiln.badge("inaktiv")}
-					kiln.text("›", .Title, .Faint)
+					kiln.icon(kiln.ICON_CHEVRON_RIGHT, .Body, .Faint)
 				}
 				if kiln.clicked() {append(out, Select{p.id})}
 			}

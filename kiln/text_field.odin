@@ -179,7 +179,7 @@ text_field :: proc(
 				},
 			},
 			) {
-				clay.TextDynamic(e.revealed ? "○" : "◉", font(.Body, disabled ? c.text_faint : c.text_muted))
+				icon_element(e.revealed ? ICON_EYE_OFF : ICON_EYE, .Body, disabled ? c.text_faint : c.text_muted)
 			}
 		}
 	}

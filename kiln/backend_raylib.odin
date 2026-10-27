@@ -63,6 +63,19 @@ when !KILN_SNAPSHOT {
 		return {tex, int(t.width), int(t.height)}, true
 	}
 
+	// The RGBA pixels of an image file, in the temp allocator.
+	@(private)
+	backend_load_pixels :: proc(path: string) -> (width, height: int, pixels: []Pixel, ok: bool) {
+		img := rl.LoadImage(strings.clone_to_cstring(path, context.temp_allocator))
+		if img.data == nil {return}
+		defer rl.UnloadImage(img)
+		rl.ImageFormat(&img, .UNCOMPRESSED_R8G8B8A8)
+		width, height = int(img.width), int(img.height)
+		pixels = make([]Pixel, width * height, context.temp_allocator)
+		copy(pixels, ([^]Pixel)(img.data)[:width * height])
+		return width, height, pixels, true
+	}
+
 	destroy_image :: proc(img: ^Image) {
 		if img.handle == nil {return}
 		tex := (^rl.Texture2D)(img.handle)
@@ -165,16 +178,16 @@ when !KILN_SNAPSHOT {
 	@(private)
 	RL_OVERSAMPLE :: 2
 
+	// One atlas per text style and font (index into `g_fonts`); fonts that draw none of the
+	// characters are not loaded.
 	@(private)
-	rl_fonts: [TextStyle]rl.Font
+	rl_fonts: [TextStyle][dynamic]rl.Font
 
-	// Everything the loaded fonts depend on; if it changes, they are reloaded.
+	// Everything the atlases depend on besides the font files; if it changes, they are rebuilt.
 	@(private)
 	RlFontState :: struct {
 		sizes: [TextStyle]u16,
 		faces: [TextStyle]FontFace,
-		files: [FontFace]cstring,
-		data:  [FontFace]rawptr,
 	}
 
 	@(private)
@@ -182,53 +195,107 @@ when !KILN_SNAPSHOT {
 	@(private)
 	rl_has_fonts: bool
 
+	// Characters baked into the atlases. Measuring a new one adds it and sets `rl_runes_dirty`,
+	// which rebuilds the atlases at the start of the next frame.
+	@(private)
+	rl_runes: map[rune]bool
+	@(private)
+	rl_runes_dirty: bool
+
 	@(private)
 	backend_sync_fonts :: proc() {
+		changed := fonts_sync()
 		want := RlFontState {
 			faces = g_theme.font_faces,
-			files = g_theme.font_files,
 		}
-		for face in FontFace {want.data[face] = raw_data(g_theme.font_data[face])}
 		for s in TextStyle {want.sizes[s] = font_size(s)}
-		if rl_has_fonts && want == rl_loaded {return}
+		if rl_has_fonts && !changed && !rl_runes_dirty && want == rl_loaded {return}
 
+		if len(rl_runes) == 0 {
+			for r in base_codepoints() {rl_runes[r] = true}
+		}
 		rl_unload_fonts()
-		cps := codepoints()
+		per_font := make([][dynamic]rune, len(g_fonts), context.temp_allocator)
 		for s in TextStyle {
-			face := want.faces[s]
+			for &list in per_font {list = make([dynamic]rune, context.temp_allocator)}
+			for r in rl_runes {append(&per_font[font_for(want.faces[s], r)], r)}
+
+			resize(&rl_fonts[s], len(g_fonts))
 			px_size := i32(want.sizes[s]) * RL_OVERSAMPLE
-			f: rl.Font
-			if data := g_theme.font_data[face]; len(data) > 0 {
-				f = rl.LoadFontFromMemory(".ttf", raw_data(data), i32(len(data)), px_size, raw_data(cps), i32(len(cps)))
-			} else {
-				f = rl.LoadFontEx(want.files[face], px_size, raw_data(cps), i32(len(cps)))
+			for list, i in per_font {
+				rl_fonts[s][i] = {}
+				data := g_fonts[i].data
+				if len(list) == 0 || !g_fonts[i].loaded {continue}
+				f := rl.LoadFontFromMemory(".ttf", raw_data(data), i32(len(data)), px_size, raw_data(list), i32(len(list)))
+				rl.SetTextureFilter(f.texture, .BILINEAR)
+				rl_fonts[s][i] = f
 			}
-			rl.SetTextureFilter(f.texture, .BILINEAR)
-			rl_fonts[s] = f
 		}
 		rl_loaded = want
 		rl_has_fonts = true
+		rl_runes_dirty = false
 		clay.ResetMeasureTextCache()
 	}
 
 	@(private)
 	rl_unload_fonts :: proc() {
 		if !rl_has_fonts {return}
-		for s in TextStyle {rl.UnloadFont(rl_fonts[s])}
+		for s in TextStyle {
+			for f in rl_fonts[s] {
+				if f.glyphs != nil {rl.UnloadFont(f)}
+			}
+			clear(&rl_fonts[s])
+		}
 		rl_has_fonts = false
+	}
+
+	// The atlas that draws `r` in `style` and its index into `g_fonts`. Characters seen for the
+	// first time are baked in the next frame; until then they show the replacement glyph.
+	@(private)
+	rl_font_for :: proc(style: TextStyle, r: rune) -> (rl.Font, int) {
+		if !rl_runes[r] {
+			rl_runes[r] = true
+			rl_runes_dirty = true
+		}
+		face := g_theme.font_faces[style]
+		i := font_for(face, r)
+		if i < len(rl_fonts[style]) && rl_fonts[style][i].glyphs != nil {return rl_fonts[style][i], i}
+		return int(face) < len(rl_fonts[style]) ? rl_fonts[style][face] : {}, int(face)
+	}
+
+	@(private)
+	rl_advance :: proc(f: rl.Font, r: rune, font_size: f32) -> f32 {
+		gi := rl.GetGlyphIndex(f, r)
+		g := f.glyphs[gi]
+		w := g.advanceX != 0 ? f32(g.advanceX) : f.recs[gi].width + f32(g.offsetX)
+		return w * font_size / f32(f.baseSize)
 	}
 
 	@(private)
 	backend_measure :: proc(text: string, style: TextStyle, font_size: u16) -> [2]f32 {
-		f := rl_fonts[style]
-		if f.glyphs == nil {return {0, f32(font_size)}}
 		w: f32 = 0
 		for r in text {
-			gi := rl.GetGlyphIndex(f, r)
-			g := f.glyphs[gi]
-			w += g.advanceX != 0 ? f32(g.advanceX) : f.recs[gi].width + f32(g.offsetX)
+			f, _ := rl_font_for(style, r)
+			if f.glyphs != nil {w += rl_advance(f, r, f32(font_size))}
 		}
-		return {w * f32(font_size) / f32(f.baseSize), f32(font_size)}
+		return {w, f32(font_size)}
+	}
+
+	// Draws text character by character, each with the font that has it. Fallback fonts are
+	// moved so their baseline matches the face's.
+	@(private)
+	rl_text :: proc(s: string, style: TextStyle, pos: [2]f32, font_size, spacing: f32, color: rl.Color) {
+		face := int(g_theme.font_faces[style])
+		x := pos.x
+		for r in s {
+			f, i := rl_font_for(style, r)
+			if f.glyphs == nil {continue}
+			if r != ' ' && r != '\t' {
+				dy := math.round((font_ascent(face) - font_ascent(i)) * font_size)
+				rl.DrawTextCodepoint(f, r, {x, pos.y + dy}, font_size, color)
+			}
+			x += rl_advance(f, r, font_size) + spacing
+		}
 	}
 
 	// -------------------------------------------------------------------------
@@ -250,13 +317,17 @@ when !KILN_SNAPSHOT {
 			b := cmd.boundingBox
 
 			switch cmd.commandType {
-			case .None, .Custom:
+			case .None:
+			case .Custom:
+				// Tinted icons (see `image_element`).
+				t := (^TintedImage)(cmd.renderData.custom.customData)
+				if t != nil {rl_image(t.handle, b, t.tint)}
 			case .Text:
 				d := cmd.renderData.text
 				s := string(d.stringContents.chars[:d.stringContents.length])
-				rl.DrawTextEx(
-					rl_fonts[TextStyle(d.fontId)],
-					strings.clone_to_cstring(s, context.temp_allocator),
+				rl_text(
+					s,
+					TextStyle(d.fontId),
 					{math.round(b.x), math.round(b.y)},
 					f32(d.fontSize),
 					f32(d.letterSpacing),
@@ -266,15 +337,7 @@ when !KILN_SNAPSHOT {
 				// Clay passes the element's background color as tint; none means untinted.
 				tint := cmd.renderData.image.backgroundColor
 				if tint == {} {tint = len(tints) > 0 ? tints[len(tints) - 1] : Color{255, 255, 255, 255}}
-				tex := (^rl.Texture2D)(cmd.renderData.image.imageData)
-				rl.DrawTexturePro(
-					tex^,
-					{0, 0, f32(tex.width), f32(tex.height)},
-					{b.x, b.y, b.width, b.height},
-					{},
-					0,
-					rl_color(tint),
-				)
+				rl_image(cmd.renderData.image.imageData, b, tint)
 			case .ScissorStart:
 				r := rl.Rectangle{b.x, b.y, b.width, b.height}
 				if len(scissors) > 0 {r = rl_intersect(r, scissors[len(scissors) - 1])}
@@ -298,6 +361,19 @@ when !KILN_SNAPSHOT {
 				if len(tints) > 0 {pop(&tints)}
 			}
 		}
+	}
+
+	@(private)
+	rl_image :: proc(handle: rawptr, b: clay.BoundingBox, tint: Color) {
+		tex := (^rl.Texture2D)(handle)
+		rl.DrawTexturePro(
+			tex^,
+			{0, 0, f32(tex.width), f32(tex.height)},
+			{b.x, b.y, b.width, b.height},
+			{},
+			0,
+			rl_color(tint),
+		)
 	}
 
 	@(private)
@@ -382,35 +458,22 @@ when !KILN_SNAPSHOT {
 	}
 }
 
-// Codepoints baked into the fonts: Latin, punctuation, arrows, geometric shapes and a few
-// symbols that work as icons (▸ ▾ ✓ ✕ ☰ ⚙ ★ …).
+// Characters baked into the atlases before any text is measured, so common text does not
+// rebuild them: Latin, punctuation and €. Everything else is added when it first shows up.
 @(private)
-g_codepoints: [dynamic]rune
-
-@(private)
-codepoints :: proc() -> []rune {
-	if len(g_codepoints) > 0 {return g_codepoints[:]}
+base_codepoints :: proc() -> []rune {
 	ranges := [?][2]rune {
 		{0x20, 0x7E}, // ASCII
 		{0xA0, 0x17F}, // Latin-1, Latin Extended-A
 		{0x2010, 0x205E}, // general punctuation
 		{0x20AC, 0x20AC}, // €
-		{0x2190, 0x21FF}, // arrows
-		{0x2212, 0x2212}, // minus
-		{0x22EF, 0x22EF}, // ⋯
-		{0x2302, 0x2302}, // ⌂
-		{0x25A0, 0x25FF}, // geometric shapes
-		{0x2600, 0x2609}, // ☀ ★ ☆ …
-		{0x2630, 0x2630}, // ☰
-		{0x2699, 0x2699}, // ⚙
-		{0x2713, 0x2718}, // ✓ ✔ ✕ ✖ ✗ ✘
 	}
+	cps := make([dynamic]rune, context.temp_allocator)
 	for rg in ranges {
-		for r in rg[0] ..= rg[1] {append(&g_codepoints, r)}
+		for r in rg[0] ..= rg[1] {append(&cps, r)}
 	}
-	return g_codepoints[:]
+	return cps[:]
 }
-
 
 // Uses the imports in snapshot builds too, where the code above is not compiled (for -vet).
 // Never called, so raylib is not linked into snapshot builds.

@@ -8,7 +8,7 @@ package kiln
 // Each size gets a fresh model and runs a second of frames (so animations settle and layouts
 // that measure the previous frame are stable). The pointer is outside the window. Output goes
 // to `KILN_SNAPSHOT_DIR` (default "snapshots"). Text is rasterized with stb_truetype from the
-// theme's font files, so it measures the same as in the raylib backend.
+// theme's fonts (with the same fallbacks), so it measures like the raylib backend.
 
 import "core:fmt"
 import "core:math"
@@ -126,6 +126,17 @@ when KILN_SNAPSHOT {
 		return create_image(int(w), int(h), ([^]Pixel)(data)[:w * h]), true
 	}
 
+	@(private)
+	backend_load_pixels :: proc(path: string) -> (width, height: int, pixels: []Pixel, ok: bool) {
+		w, h, n: i32
+		data := stbi.load(strings.clone_to_cstring(path, context.temp_allocator), &w, &h, &n, 4)
+		if data == nil {return}
+		defer stbi.image_free(data)
+		pixels = make([]Pixel, w * h, context.temp_allocator)
+		copy(pixels, ([^]Pixel)(data)[:w * h])
+		return int(w), int(h), pixels, true
+	}
+
 	destroy_image :: proc(img: ^Image) {
 		if img.handle == nil {return}
 		s := (^SnapImage)(img.handle)
@@ -167,19 +178,8 @@ when KILN_SNAPSHOT {
 	// -------------------------------------------------------------------------
 
 	@(private)
-	SnapFont :: struct {
-		info:   stbtt.fontinfo,
-		data:   []u8,
-		ascent: f32, // unscaled
-		loaded: bool,
-	}
-
-	@(private)
-	g_snap_fonts: [FontFace]SnapFont
-
-	@(private)
 	GlyphKey :: struct {
-		face: FontFace,
+		font: int, // index into `g_fonts`
 		size: u16,
 		r:    rune,
 	}
@@ -195,60 +195,49 @@ when KILN_SNAPSHOT {
 
 	@(private)
 	backend_sync_fonts :: proc() {
-		for face in FontFace {
-			f := &g_snap_fonts[face]
-			if f.loaded {continue}
-			if embedded := g_theme.font_data[face]; len(embedded) > 0 {
-				f.data = embedded
-			} else {
-				data, err := os.read_entire_file(string(g_theme.font_files[face]), context.allocator)
-				if err != nil {
-					fmt.eprintln("snapshot: cannot read font", g_theme.font_files[face])
-					continue
-				}
-				f.data = data
-			}
-			stbtt.InitFont(&f.info, raw_data(f.data), 0)
-			asc, desc, gap: i32
-			stbtt.GetFontVMetrics(&f.info, &asc, &desc, &gap)
-			f.ascent = f32(asc)
-			f.loaded = true
+		if fonts_sync() {
+			for _, g in g_glyphs {delete(g.alpha)}
+			clear(&g_glyphs)
 		}
 	}
 
+	// The font that draws `r` in `style` (index into `g_fonts`), -1 if none is loaded.
 	@(private)
-	snap_font :: proc(style: TextStyle) -> ^SnapFont {
-		return &g_snap_fonts[g_theme.font_faces[style]]
+	snap_font :: proc(style: TextStyle, r: rune) -> int {
+		i := font_for(g_theme.font_faces[style], r)
+		return i < len(g_fonts) && g_fonts[i].loaded ? i : -1
+	}
+
+	@(private)
+	snap_advance :: proc(font: int, r: rune, font_size: u16) -> f32 {
+		f := &g_fonts[font]
+		adv, lsb: i32
+		stbtt.GetCodepointHMetrics(&f.info, r, &adv, &lsb)
+		return f32(adv) * stbtt.ScaleForPixelHeight(&f.info, f32(font_size))
 	}
 
 	@(private)
 	backend_measure :: proc(text: string, style: TextStyle, font_size: u16) -> [2]f32 {
-		f := snap_font(style)
-		if !f.loaded {return {f32(len(text)) * f32(font_size) / 2, f32(font_size)}}
-		scale := stbtt.ScaleForPixelHeight(&f.info, f32(font_size))
 		w: f32 = 0
 		for r in text {
-			adv, lsb: i32
-			stbtt.GetCodepointHMetrics(&f.info, r, &adv, &lsb)
-			w += f32(adv) * scale
+			i := snap_font(style, r)
+			w += i < 0 ? f32(font_size) / 2 : snap_advance(i, r, font_size)
 		}
 		return {w, f32(font_size)}
 	}
 
 	@(private)
-	snap_glyph :: proc(style: TextStyle, font_size: u16, r: rune) -> Glyph {
-		key := GlyphKey{g_theme.font_faces[style], font_size, r}
+	snap_glyph :: proc(font: int, font_size: u16, r: rune) -> Glyph {
+		key := GlyphKey{font, font_size, r}
 		if g, ok := g_glyphs[key]; ok {return g}
-		f := snap_font(style)
+		f := &g_fonts[font]
 		g: Glyph
-		if f.loaded {
-			scale := stbtt.ScaleForPixelHeight(&f.info, f32(font_size))
-			bmp := stbtt.GetCodepointBitmap(&f.info, scale, scale, r, &g.w, &g.h, &g.x, &g.y)
-			if bmp != nil {
-				g.alpha = make([]u8, g.w * g.h)
-				copy(g.alpha, bmp[:g.w * g.h])
-				stbtt.FreeBitmap(bmp, nil)
-			}
+		scale := stbtt.ScaleForPixelHeight(&f.info, f32(font_size))
+		bmp := stbtt.GetCodepointBitmap(&f.info, scale, scale, r, &g.w, &g.h, &g.x, &g.y)
+		if bmp != nil {
+			g.alpha = make([]u8, g.w * g.h)
+			copy(g.alpha, bmp[:g.w * g.h])
+			stbtt.FreeBitmap(bmp, nil)
 		}
 		g_glyphs[key] = g
 		return g
@@ -280,7 +269,10 @@ when KILN_SNAPSHOT {
 			cmd := clay.RenderCommandArray_Get(commands, i)
 			b := cmd.boundingBox
 			switch cmd.commandType {
-			case .None, .Custom, .OverlayColorStart, .OverlayColorEnd:
+			case .None, .OverlayColorStart, .OverlayColorEnd:
+			case .Custom:
+				t := (^TintedImage)(cmd.renderData.custom.customData)
+				if t != nil {snap_image(&cv, (^SnapImage)(t.handle), b, t.tint)}
 			case .Rectangle:
 				d := cmd.renderData.rectangle
 				snap_fill(&cv, b, d.cornerRadius, d.backgroundColor, 0)
@@ -299,7 +291,7 @@ when KILN_SNAPSHOT {
 				d := cmd.renderData.text
 				snap_text(&cv, string(d.stringContents.chars[:d.stringContents.length]), b, d)
 			case .Image:
-				snap_image(&cv, (^SnapImage)(cmd.renderData.image.imageData), b)
+				snap_image(&cv, (^SnapImage)(cmd.renderData.image.imageData), b, cmd.renderData.image.backgroundColor)
 			case .ScissorStart:
 				r := [4]f32{b.x, b.y, b.x + b.width, b.y + b.height}
 				if len(cv.clips) > 0 {
@@ -385,13 +377,15 @@ when KILN_SNAPSHOT {
 	@(private)
 	snap_text :: proc(cv: ^Canvas, s: string, b: clay.BoundingBox, d: clay.TextRenderData) {
 		style := TextStyle(d.fontId)
-		f := snap_font(style)
-		if !f.loaded {return}
-		scale := stbtt.ScaleForPixelHeight(&f.info, f32(d.fontSize))
-		baseline := math.round(b.y + f.ascent * scale)
+		baseline := math.round(b.y + font_ascent(int(g_theme.font_faces[style])) * f32(d.fontSize))
 		pen := b.x
 		for r in s {
-			g := snap_glyph(style, d.fontSize, r)
+			font := snap_font(style, r)
+			if font < 0 {
+				pen += f32(d.fontSize) / 2
+				continue
+			}
+			g := snap_glyph(font, d.fontSize, r)
 			gx, gy := int(math.round(pen)) + int(g.x), int(baseline) + int(g.y)
 			x0, y0, x1, y1 := snap_span(cv, f32(gx), f32(gy), f32(gx + int(g.w)), f32(gy + int(g.h)))
 			for y in y0 ..< y1 {
@@ -400,22 +394,23 @@ when KILN_SNAPSHOT {
 					snap_blend(cv, x, y, d.textColor, f32(a) / 255)
 				}
 			}
-			adv, lsb: i32
-			stbtt.GetCodepointHMetrics(&f.info, r, &adv, &lsb)
-			pen += f32(adv) * scale + f32(d.letterSpacing)
+			pen += snap_advance(font, r, d.fontSize) + f32(d.letterSpacing)
 		}
 	}
 
+	// Draws an image scaled to the box. A tint (Clay's background color of the element)
+	// multiplies every pixel, like raylib does.
 	@(private)
-	snap_image :: proc(cv: ^Canvas, img: ^SnapImage, b: clay.BoundingBox) {
+	snap_image :: proc(cv: ^Canvas, img: ^SnapImage, b: clay.BoundingBox, tint: Color) {
 		if img == nil || img.width == 0 {return}
+		t := tint == {} ? Color{255, 255, 255, 255} : tint
 		x0, y0, x1, y1 := snap_span(cv, b.x, b.y, b.x + b.width, b.y + b.height)
 		for y in y0 ..< y1 {
 			for x in x0 ..< x1 {
 				u := clamp(int((f32(x) + 0.5 - b.x) / b.width * f32(img.width)), 0, img.width - 1)
 				v := clamp(int((f32(y) + 0.5 - b.y) / b.height * f32(img.height)), 0, img.height - 1)
 				p := img.pixels[v * img.width + u]
-				snap_blend(cv, x, y, {f32(p.r), f32(p.g), f32(p.b), f32(p.a)}, 1)
+				snap_blend(cv, x, y, Color{f32(p.r), f32(p.g), f32(p.b), f32(p.a)} * t / 255, 1)
 			}
 		}
 	}

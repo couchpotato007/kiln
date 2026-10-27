@@ -6,8 +6,8 @@ package subset_font
 //   odin run tools/subset_font -- resources/Iosevka-Regular.ttf resources/kiln-regular.ttf
 //   odin run tools/subset_font -- in.ttf out.ttf U+20-7E,U+A0-17F
 //
-// Without a range list it keeps the ranges kiln bakes into its fonts (`codepoints` in
-// kiln/backend_raylib.odin; keep both lists in sync). Same idea as
+// Without a range list it keeps Latin, punctuation, arrows, geometric shapes and a few symbols.
+// Characters a subset lacks can come from `font_fallbacks` in the theme. Same idea as
 // `pyftsubset in.ttf --unicodes=... --output-file=out.ttf`, without needing Python.
 //
 // Kept tables: head, hhea, maxp, OS/2, hmtx, name, a new cmap (format 4), a version 3 post and

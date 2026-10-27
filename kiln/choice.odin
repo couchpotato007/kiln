@@ -171,9 +171,10 @@ tabs_enum :: proc(selected: $E, labels: [E]string) -> (E, bool) where intrinsics
 // Navigation list
 // ---------------------------------------------------------------------------
 
-// One destination of a navigation list. `icon` is a single glyph like "◆" or "⚙".
+// One destination of a navigation list, with an icon (see `Icon`).
 NavItem :: struct {
-	icon, label: string,
+	icon:  Icon,
+	label: string,
 }
 
 // A vertical list of destinations (sidebars, drawers). `collapsed` shows only the icons, with
@@ -221,7 +222,7 @@ nav_index :: proc(selected: int, items: []NavItem, collapsed := false) -> (int, 
 				cornerRadius = corners(.MD),
 			},
 			) {
-				if len(item.icon) > 0 {clay.TextDynamic(item.icon, font(.Body, fg))}
+				icon_element(item.icon, .Body, fg)
 				if !collapsed {
 					style := font(.Body, fg)
 					style.wrapMode = .None
@@ -305,7 +306,7 @@ select_index :: proc(
 	) {
 		clay.TextDynamic(shown, style)
 		spacer()
-		clay.TextDynamic(open ? "▴" : "▾", font(.Body, c.text_muted))
+		icon_element(open ? ICON_CHEVRON_UP : ICON_CHEVRON_DOWN, .Body, c.text_muted)
 
 		if open {
 			if i, ok := popup_list(eid, list, options, selected); ok {

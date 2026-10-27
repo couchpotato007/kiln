@@ -396,4 +396,5 @@ collect_garbage :: proc() {
 	for key, cal in g_calendars {
 		if cal.frame + STALE_FRAMES < g_frame {delete_key(&g_calendars, key)}
 	}
+	icons_collect()
 }

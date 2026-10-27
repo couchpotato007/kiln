@@ -82,15 +82,15 @@ Ctrl +/−/0 zooms, which also moves the app between screen classes.
 | ------ | ------- |
 | containers | `column`, `row`, `center`, `card("Titel")`, `scroll()`, `collapsible("Mehr")`, `list_item(selected)` |
 | responsive | `grid(220)`, `adaptive(720)`, `flow()`, `field("Name", help, error)`, `actions()` |
-| text | `text(s, .Caption, .Muted)`, `text(title, ellipsis = true)`, `badge("Neu", .Primary)`, `avatar(name)` |
-| buttons | `button("OK")`, `button("Entfernen", .Ghost, tone = .Danger)`, `chip("Offen", m.open)` |
+| text | `text(s, .Caption, .Muted)`, `text(title, ellipsis = true)`, `icon(FOLDER, .Title)`, `badge("Neu", .Primary)`, `avatar(name)` |
+| buttons | `button("OK")`, `button(kiln.ICON_MENU, .Ghost)`, `button("Suchen", icon = kiln.ICON_SEARCH)`, `button("Entfernen", .Ghost, tone = .Danger)`, `chip("Offen", m.open)` |
 | values | `checkbox`, `toggle`, `radio`, `slider(m.v, 0, 100)`, `text_field(m.s, "Name")`, `text_field(m.pw, "Passwort", password = true)` |
 | choices | `segmented`, `tabs`, `nav`, `select(m.i, OPTIONS[:])`, `chips(m.i, LABELS[:])` |
 | dates | `date_field(m.due, min = kiln.today())`, `calendar(m.day)`, `date_add_months`, `date_parse`, ... |
 | data | `table(m.sel, COLUMNS[:], rows)`, `tree(m.sel, nodes)` |
 | charts | `bar_chart(values, labels, format = f, highlight = i)`, `timeline(rows, ticks)`, `legend(items)`, `swatch(color)`, `chart_color(i)` |
 | feedback | `progress(v, color = c, thin = true)`, `spinner()`, `stat("Umsatz", "1840 €", delta = "+4 %")`, `callout(.Danger, "Fehler")`, `empty_state(title, text)`, `toast("Gespeichert")` |
-| overlays | `dialog("name", "Titel")`, `drawer("nav")`, `show(name)` / `hide()`, `menu("⋯", ITEMS[:])`, `context_menu(ITEMS[:])`, `tooltip("Strg+S")` |
+| overlays | `dialog("name", "Titel")`, `drawer("nav")`, `show(name)` / `hide()`, `menu(kiln.ICON_MORE, ITEMS[:])`, `context_menu(ITEMS[:])`, `tooltip("Strg+S")` |
 | other | `image(img)`, `separator()`, `spacer()`, `copy_to_clipboard(s)`, `clipboard()` |
 | effects | `task(work, data)` runs `work` on a thread and delivers its message, `every("refresh", 300)` / `after(name, s)` are timers |
 
@@ -103,12 +103,61 @@ and `swatch_button` in `example/components`.
 kiln compiles subsets of Iosevka (`resources/kiln-regular.ttf`,
 `resources/kiln-bold.ttf`, about 80 KB each) into the binary, so apps start from
 any directory. `-define:KILN_EMBED_FONTS=false` loads `font_files` at runtime
-instead; `font_data` in the theme takes any font file in memory. To make a
-subset of another font (keeps the codepoints kiln loads):
+instead; `font_data` in the theme takes any font file in memory.
+
+Any character a font has can be shown: glyphs are baked on demand the first time
+a character is measured (one frame later it is there). Characters the font lacks
+come from `font_fallbacks`, a list of fonts in memory that are tried in order,
+e.g. a full font, a CJK font or a symbol font:
+
+```odin
+theme := kiln.catppuccin(.Mocha)
+cjk, _ := os.read_entire_file("fonts/NotoSansSC-Regular.otf", context.allocator)
+fallbacks := [?][]u8{#load("fonts/Iosevka-Regular.ttf"), cjk}
+theme.font_fallbacks = fallbacks[:] // must stay alive while the app runs
+```
+
+TrueType and OpenType files work; font collections (`.ttc`) and color emoji
+fonts do not. To make a subset of another font:
 
     odin run tools/subset_font -- resources/Iosevka-Regular.ttf resources/kiln-regular.ttf
+    odin run tools/subset_font -- resources/Iosevka-SemiBold.ttf resources/kiln-bold.ttf
 
 or with fonttools: `pyftsubset Iosevka-Regular.ttf --unicodes=U+20-7E,U+A0-17F,U+2010-205E,U+20AC,U+2190-21FF,U+2212,U+22EF,U+2302,U+25A0-25FF,U+2600-2609,U+2630,U+2699,U+2713-2718 --output-file=kiln-regular.ttf`.
+
+## Icons
+
+An `Icon` is an SVG document, an image or a character of the font. Icons are
+plain values, so they can be constants and sit in tables:
+
+```odin
+FOLDER :: kiln.Icon{svg = #load("icons/folder.svg", string)}
+LOGO   :: kiln.Icon{svg = #load("icons/logo.svg", string)}
+STAR   :: kiln.Icon{glyph = "★"}
+
+kiln.icon(FOLDER, .Title, .Primary)                       // sized like text of that style
+if kiln.button(kiln.ICON_MENU, .Ghost) {kiln.show("nav")}  // square icon button
+kiln.button("Suchen", .Secondary, icon = kiln.ICON_SEARCH) // icon before the label
+kiln.menu(kiln.ICON_MORE, ITEMS[:], .Ghost)
+NavItem{FOLDER, "Dateien"}, TreeNode{label = "src", icon = FOLDER}, MenuItem{label = "Öffnen", icon = FOLDER}
+
+ic, ok := kiln.load_icon("icons/logo.png") // at runtime: .svg, .png, .jpg, ... (after the window opened)
+```
+
+SVGs are rasterized by kiln itself (no extra library) at the exact pixel size
+they are drawn at, so they stay sharp at every zoom level. Icons with a single
+color, like the ones from Lucide, Tabler, Feather, Heroicons or Material
+(`currentColor` or plain black), take the text color of the widget; colorful
+ones keep their colors. The same goes for images loaded with `load_icon`.
+Supported: `path`, `rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon`,
+groups, fill / stroke (width, caps, joins), `fill-rule`, opacity and transforms.
+Not supported: gradients (drawn in the text color), `<use>`, masks, clip paths,
+text and CSS classes.
+
+Built in (used by kiln's own widgets too): `ICON_CHECK`, `ICON_CLOSE`,
+`ICON_PLUS`, `ICON_MINUS`, `ICON_SEARCH`, `ICON_MENU`, `ICON_MORE`, `ICON_STAR`,
+`ICON_CALENDAR`, `ICON_EYE`, `ICON_EYE_OFF`, `ICON_CHEVRON_LEFT` / `RIGHT` / `UP`
+/ `DOWN`.
 
 ## Example
 

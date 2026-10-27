@@ -99,7 +99,7 @@ chip :: proc(label: string, selected: bool, disabled := false) -> bool {
 		border = outline(border),
 	},
 	) {
-		if selected {clay.TextDynamic("✓", style)}
+		if selected {icon_element(ICON_CHECK, .Body, fg)}
 		clay.TextDynamic(label, style)
 	}
 	set_last(eid, s)

@@ -11,8 +11,10 @@ package main
 //   odin run example -collection:lib=. -define:KILN_SNAPSHOT=true -define:START_PAGE=2
 
 import "components"
+import "core:os"
 import "dashboard"
 import "files"
+import "icons"
 import "lib:kiln"
 import "people"
 import "settings"
@@ -31,12 +33,12 @@ Page :: enum {
 }
 
 PAGES := [Page]kiln.NavItem {
-	.Dashboard  = {"◆", "Übersicht"},
-	.Tasks      = {"✓", "Aufgaben"},
-	.People     = {"●", "Personen"},
-	.Files      = {"■", "Dateien"},
-	.Settings   = {"⚙", "Einstellungen"},
-	.Components = {"★", "Komponenten"},
+	.Dashboard  = {icons.GRID, "Übersicht"},
+	.Tasks      = {icons.TASKS, "Aufgaben"},
+	.People     = {icons.USER, "Personen"},
+	.Files      = {icons.FOLDER, "Dateien"},
+	.Settings   = {icons.SLIDERS, "Einstellungen"},
+	.Components = {icons.SHAPES, "Komponenten"},
 }
 
 SUBTITLES := [Page]string {
@@ -175,14 +177,14 @@ sidebar :: proc(m: ^Model, out: ^[dynamic]Msg, collapsed: bool) {
 
 brand :: proc(collapsed: bool) {
 	if kiln.row(.SM, padding = .SM) {
-		kiln.text("◆", .Title, .Primary)
+		kiln.icon(icons.LOGO, .Title)
 		if !collapsed {kiln.text("Kiln Demo", .Title)}
 	}
 }
 
 top_bar :: proc(m: ^Model) {
 	if kiln.row(.SM, padding = .SM, bg = .Sunken) {
-		if kiln.button("☰", .Ghost) {kiln.show("nav")}
+		if kiln.button(kiln.ICON_MENU, .Ghost) {kiln.show("nav")}
 		kiln.text("Kiln Demo", .Subtitle)
 		kiln.spacer()
 		kiln.badge(PAGES[m.page].label, .Primary)
@@ -199,6 +201,14 @@ SNAPSHOT_CLICK_Y :: #config(SNAPSHOT_CLICK_Y, -1)
 main :: proc() {
 	theme := kiln.catppuccin(.Mocha)
 	theme.locale = kiln.locale_de()
+
+	// Characters the embedded Iosevka subset lacks (Greek, math, ...) come from the full font,
+	// if the demo runs from the repository.
+	fallbacks: [1][]u8
+	if data, err := os.read_entire_file("resources/Iosevka-Regular.ttf", context.allocator); err == nil {
+		fallbacks[0] = data
+		theme.font_fallbacks = fallbacks[:]
+	}
 
 	open := [?]string{SNAPSHOT_OPEN}
 	clicks := [?][2]f32{{SNAPSHOT_CLICK_X, SNAPSHOT_CLICK_Y}}

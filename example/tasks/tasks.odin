@@ -218,7 +218,7 @@ task_list :: proc(m: ^Model, out: ^[dynamic]Msg) {
 					kiln.text(t.text, .Body, t.done ? .Faint : .Default)
 					kiln.spacer()
 					kiln.badge(PRIORITY_NAMES[t.priority], PRIORITY_TONES[t.priority])
-					if a, ok := kiln.menu("⋯", ITEM_MENU[:], .Ghost); ok {
+					if a, ok := kiln.menu(kiln.ICON_MORE, ITEM_MENU[:], .Ghost); ok {
 						append(out, Item_Action{t.id, a})
 					}
 				}

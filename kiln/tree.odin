@@ -8,10 +8,10 @@ package kiln
 
 import clay "clay-odin"
 
-// One node of a tree; leaves have no children. `icon` is an optional glyph before the label.
+// One node of a tree; leaves have no children. `icon` is optional and goes before the label.
 TreeNode :: struct {
 	label:    string,
-	icon:     string,
+	icon:     Icon,
 	children: []TreeNode,
 }
 
@@ -136,11 +136,9 @@ tree_walk :: proc(w: ^TreeWalk, nodes: []TreeNode, parent_key: u32, depth: int) 
 				},
 			},
 			) {
-				if branch {clay.TextDynamic(open ? "▾" : "▸", font(.Body, c.text_muted))}
+				if branch {icon_element(open ? ICON_CHEVRON_DOWN : ICON_CHEVRON_RIGHT, .Caption, c.text_muted)}
 			}
-			if len(node.icon) > 0 {
-				clay.TextDynamic(node.icon, font(.Body, on ? c.primary : c.text_muted))
-			}
+			icon_element(node.icon, .Body, on ? c.primary : c.text_muted)
 			clay.TextDynamic(node.label, font(.Body, on ? c.primary : c.text))
 		}
 

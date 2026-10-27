@@ -15,19 +15,41 @@ ButtonVariant :: enum {
 	Danger, // filled with the danger color
 }
 
-// A button; returns true in the frame it was clicked. A single-character label (an icon like
-// "✕" or "☰") gives a square button. `fill` makes it as wide as its container; inside
-// `actions` on compact screens buttons fill automatically. `tone` colors the label of ghost and
-// secondary buttons, e.g. a red ghost "Entfernen".
-button :: proc(
+// A button; returns true in the frame it was clicked. `icon` goes before the label. An icon alone
+// (`button(kiln.ICON_MENU, .Ghost)`) or a single-character label ("✕") gives a square button.
+// `fill` makes it as wide as its container; inside `actions` on compact screens buttons fill
+// automatically. `tone` colors the label of ghost and secondary buttons, e.g. a red ghost
+// "Entfernen".
+button :: proc {
+	button_label,
+	button_icon,
+}
+
+button_label :: proc(
 	label: string,
 	variant := ButtonVariant.Primary,
 	disabled := false,
 	fill := false,
 	tone := Tone.Default,
+	icon := Icon{},
 ) -> bool {
+	return button_impl(label, icon, variant, disabled, fill, tone)
+}
+
+button_icon :: proc(
+	icon: Icon,
+	variant := ButtonVariant.Primary,
+	disabled := false,
+	fill := false,
+	tone := Tone.Default,
+) -> bool {
+	return button_impl("", icon, variant, disabled, fill, tone)
+}
+
+@(private)
+button_impl :: proc(label: string, ic: Icon, variant: ButtonVariant, disabled, fill: bool, tone: Tone) -> bool {
 	c := &g_theme
-	eid := id(label)
+	eid := id(len(label) > 0 ? label : icon_key(ic))
 	s := interact(eid, disabled)
 
 	bg, hover, active, fg: Color
@@ -55,7 +77,7 @@ button :: proc(
 
 	p := parent_box()
 	grow := fill || (p != nil && p.kind == .Actions && p.stacked)
-	square := !grow && utf8.rune_count_in_string(label) == 1
+	square := !grow && (len(label) == 0 || (icon_empty(ic) && utf8.rune_count_in_string(label) == 1))
 
 	width := clay.SizingFit()
 	padding := inset(.LG, .None)
@@ -71,6 +93,7 @@ button :: proc(
 		layout = {
 			sizing = {width, clay.SizingFixed(size(.Control))},
 			padding = padding,
+			childGap = space(.SM),
 			childAlignment = {.Center, .Center},
 		},
 		backgroundColor = bg,
@@ -80,7 +103,8 @@ button :: proc(
 
 	flow_item(eid)
 	if clay.UI(eid)(decl) {
-		clay.TextDynamic(label, style)
+		icon_element(ic, .Body, fg)
+		if len(label) > 0 {clay.TextDynamic(label, style)}
 	}
 	set_last(eid, s)
 	return s.clicked

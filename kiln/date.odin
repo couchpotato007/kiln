@@ -304,7 +304,7 @@ date_field :: proc(
 	) {
 		clay.TextDynamic(valid ? date_text(value) : placeholder, style)
 		spacer()
-		clay.TextDynamic("▦", font(.Body, c.text_muted))
+		icon_element(ICON_CALENDAR, .Body, c.text_muted)
 
 		if open {
 			old_z := g_z
@@ -401,7 +401,7 @@ calendar_body :: proc(eid: Id, value, lo, hi: Date, st: ^Calendar_State, keys: b
 		}
 	}
 	if clay.UI()({layout = {sizing = {clay.SizingFixed(width), clay.SizingFit()}, childAlignment = {y = .Center}}}) {
-		if button("‹", .Ghost) {step(st, -1)}
+		if button(ICON_CHEVRON_LEFT, .Ghost) {step(st, -1)}
 		tid := sub_id(eid, "title")
 		up := st.view != .Years
 		ts := interact(tid, !up)
@@ -411,6 +411,7 @@ calendar_body :: proc(eid: Id, value, lo, hi: Date, st: ^Calendar_State, keys: b
 		{
 			layout = {
 				sizing = {clay.SizingGrow(), clay.SizingFixed(size(.Control))},
+				childGap = space(.XS),
 				childAlignment = {.Center, .Center},
 			},
 			backgroundColor = mix(fade(c.surface_hover, 0), c.surface_hover, h),
@@ -420,9 +421,9 @@ calendar_body :: proc(eid: Id, value, lo, hi: Date, st: ^Calendar_State, keys: b
 			style := font(.Body, c.text)
 			style.wrapMode = .None
 			clay.TextDynamic(title, style)
-			if up {clay.TextDynamic(" ▾", font(.Body, c.text_muted))}
+			if up {icon_element(ICON_CHEVRON_DOWN, .Caption, c.text_muted)}
 		}
-		if button("›", .Ghost) {step(st, 1)}
+		if button(ICON_CHEVRON_RIGHT, .Ghost) {step(st, 1)}
 	}
 
 	if st.view != .Days {

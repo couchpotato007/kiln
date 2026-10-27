@@ -7,12 +7,13 @@ import "core:fmt"
 import "core:math"
 import "core:strings"
 import "core:time"
+import "../icons"
 import "lib:kiln"
 import clay "lib:kiln/clay-odin"
 
 ACTIONS := [?]kiln.MenuItem {
-	{label = "Öffnen"},
-	{label = "Umbenennen"},
+	{label = "Öffnen", icon = icons.FOLDER},
+	{label = "Umbenennen", icon = icons.FILE},
 	{label = "Archivieren", disabled = true},
 	{separator = true},
 	{label = "Löschen", danger = true},
@@ -180,6 +181,7 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 		buttons(m, out)
 		inputs(m, out)
 		badges()
+		icon_gallery()
 		feedback(m, out)
 		picture(m)
 		tabs(m, out)
@@ -229,11 +231,11 @@ buttons :: proc(m: ^Model, out: ^[dynamic]Msg) {
 			kiln.button("Prüfen", .Secondary, tone = .Success)
 		}
 		if kiln.row() {
-			kiln.button("☰", .Secondary)
+			kiln.button(kiln.ICON_MENU, .Secondary)
 			kiln.tooltip("Menü")
-			kiln.button("⚙", .Secondary)
+			kiln.button(icons.SLIDERS, .Secondary)
 			kiln.tooltip("Einstellungen")
-			if kiln.button("★", .Secondary) {append(out, Favorite{})}
+			if kiln.button(kiln.ICON_STAR, .Secondary) {append(out, Favorite{})}
 			kiln.tooltip("Favorit hinzufügen")
 			kiln.text(fmt.tprintf("%d Favoriten", m.favorites), .Caption, .Muted)
 		}
@@ -251,6 +253,42 @@ inputs :: proc(m: ^Model, out: ^[dynamic]Msg) {
 		if len(m.greeting) > 0 {
 			kiln.text(fmt.tprintf("Zuletzt begrüßt: %s", m.greeting), .Body, .Info)
 		}
+	}
+}
+
+BUILTIN_ICONS := [?]kiln.Icon {
+	kiln.ICON_CHECK,
+	kiln.ICON_CLOSE,
+	kiln.ICON_PLUS,
+	kiln.ICON_MINUS,
+	kiln.ICON_SEARCH,
+	kiln.ICON_MENU,
+	kiln.ICON_MORE,
+	kiln.ICON_STAR,
+	kiln.ICON_CALENDAR,
+	kiln.ICON_EYE,
+	kiln.ICON_EYE_OFF,
+	kiln.ICON_CHEVRON_LEFT,
+	kiln.ICON_CHEVRON_RIGHT,
+	kiln.ICON_CHEVRON_UP,
+	kiln.ICON_CHEVRON_DOWN,
+}
+
+// SVG icons (built in and from files), a glyph as icon and characters from a fallback font.
+icon_gallery :: proc() {
+	if kiln.card("Icons und Schrift") {
+		if kiln.flow(.MD) {
+			for ic in BUILTIN_ICONS {kiln.icon(ic, .Subtitle, .Muted)}
+		}
+		if kiln.row() {
+			kiln.icon(icons.LOGO, .Headline)
+			kiln.icon(kiln.ICON_STAR, .Headline, .Warning)
+			kiln.icon(kiln.Icon{glyph = "◆"}, .Headline, .Primary)
+			kiln.spacer()
+			kiln.button("Suchen", .Secondary, icon = kiln.ICON_SEARCH)
+		}
+		kiln.text("λ → ∑ ∞ ≠ ⌘ ♥ ♪ Ω ∂", .Subtitle)
+		kiln.text("Zeichen, die die eingebettete Schrift nicht hat, kommen aus `font_fallbacks`.", .Caption, .Faint)
 	}
 }
 
@@ -284,8 +322,8 @@ feedback :: proc(m: ^Model, out: ^[dynamic]Msg) {
 		kiln.progress(1 - m.progress, .Warning)
 		for i in 0 ..< 3 {kiln.progress(m.progress * f32(3 - i) / 3, color = kiln.chart_color(i + 4), thin = true)}
 		if kiln.row() {
-			if kiln.button("−", .Secondary) {append(out, Step_Progress{-0.1})}
-			if kiln.button("+", .Secondary) {append(out, Step_Progress{0.1})}
+			if kiln.button(kiln.ICON_MINUS, .Secondary) {append(out, Step_Progress{-0.1})}
+			if kiln.button(kiln.ICON_PLUS, .Secondary) {append(out, Step_Progress{0.1})}
 			kiln.text(fmt.tprintf("%.0f %%", m.progress * 100), .Body, .Muted)
 			kiln.spacer()
 			kiln.spinner()
@@ -311,10 +349,10 @@ menus :: proc(m: ^Model, out: ^[dynamic]Msg) {
 	if kiln.card("Menüs") {
 		if kiln.row() {
 			if i, ok := kiln.menu("Aktionen", ACTIONS[:]); ok {append(out, Menu_Picked{"Menü", i})}
-			if i, ok := kiln.menu("⋯", ACTIONS[:], .Ghost); ok {append(out, Menu_Picked{"Icon-Menü", i})}
+			if i, ok := kiln.menu(kiln.ICON_MORE, ACTIONS[:], .Ghost); ok {append(out, Menu_Picked{"Icon-Menü", i})}
 		}
 		if kiln.list_item() {
-			kiln.text("□", .Body, .Muted)
+			kiln.icon(icons.FILE, .Body, .Muted)
 			kiln.text("projekt.odin")
 			kiln.spacer()
 			kiln.text("Rechtsklick", .Caption, .Faint)
@@ -408,7 +446,7 @@ long_texts :: proc() {
 		}
 		for t in titles {
 			if kiln.list_item() {
-				kiln.text("□", .Body, .Muted)
+				kiln.icon(icons.FILE, .Body, .Muted)
 				kiln.text(t, ellipsis = true)
 			}
 		}

@@ -66,7 +66,7 @@ dialog :: proc(name: string, title: string) -> bool {
 	) {
 		text(title, .Subtitle)
 		spacer()
-		if button("✕", .Ghost) {hide()}
+		if button(ICON_CLOSE, .Ghost) {hide()}
 	}
 
 	content := sub_id(eid, "content")

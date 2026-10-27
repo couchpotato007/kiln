@@ -135,7 +135,11 @@ bar_chart :: proc(
 		},
 	},
 	) {
-		if clay.UI()({layout = {sizing = {clay.SizingGrow(), clay.SizingFit()}, padding = {left = left}}}) {
+		axis: clay.CustomElementConfig
+		// Room above the bars for the top value, which is centered on the top gridline.
+		above := value_axis ? u16(math.ceil(f32(font_size(.Caption)) / 2)) : 0
+		if value_axis {axis = draw(bar_axis(bars, chart_h, axis_w, f32(left), f32(above), top, format))}
+		if clay.UI()({layout = {sizing = {clay.SizingGrow(), clay.SizingFit()}, padding = {left = left, top = above}}, custom = axis}) {
 			if clay.UI(bars)(
 			{
 				layout = {
@@ -145,7 +149,6 @@ bar_chart :: proc(
 				},
 			},
 			) {
-				if value_axis {bar_axis(bars, chart_h, axis_w, axis_gap, top, format)}
 				for v, i in values {
 					bid := sub_id(eid, "bar", i)
 					s := states[i]
@@ -202,46 +205,26 @@ bar_chart :: proc(
 	return clicked, clicked >= 0
 }
 
-// Gridlines over the bars and their values left of them, floating so they take no room.
+// Gridlines behind the bars and their values left of them, drawn on the element around the bars
+// (`bars` plus `left` pixels of room for the values and `above` pixels for the top one).
 @(private)
-bar_axis :: proc(bars: Id, chart_h, axis_w, axis_gap, top: f32, format: proc(v: f32) -> string) {
+bar_axis :: proc(bars: Id, chart_h, axis_w, left, above, top: f32, format: proc(v: f32) -> string) -> ^Drawing {
 	c := &g_theme
 	w := clay.GetElementData(bars).boundingBox.width
+	lw := line_width()
 	label_h := f32(font_size(.Caption))
+	d := drawing()
 	for k in 1 ..= 3 {
-		y := chart_h * (1 - f32(k) / 3)
-		if clay.UI()(
-		{
-			layout = {sizing = {clay.SizingFixed(w), clay.SizingFixed(line_width())}},
-			backgroundColor = fade(c.border, 0.7),
-			floating = {
-				attachTo = .Parent,
-				attachment = {element = .LeftTop, parent = .LeftTop},
-				offset = {0, y},
-				zIndex = g_z + 1,
-				pointerCaptureMode = .Passthrough,
-			},
-		},
-		) {}
-		v := top * f32(k) / 3
-		style := font(.Caption, c.text_faint)
-		style.wrapMode = .None
-		if clay.UI()(
-		{
-			layout = {sizing = {clay.SizingFixed(axis_w), clay.SizingFit()}, childAlignment = {x = .Right}},
-			floating = {
-				attachTo = .Parent,
-				attachment = {element = .LeftTop, parent = .LeftTop},
-				offset = {-axis_w - axis_gap, y - label_h / 2},
-				zIndex = g_z + 1,
-				pointerCaptureMode = .Passthrough,
-			},
-		},
-		) {
-			clay.TextDynamic(format != nil ? format(v) : fmt.tprint(v), style)
-		}
+		y := above + chart_h * (1 - f32(k) / 3)
+		move_to(d, {left, y + lw / 2})
+		line_to(d, {left + w, y + lw / 2})
+		stroke_path(d, fade(c.border, 0.7), lw, .Butt)
+		label := format != nil ? format(top * f32(k) / 3) : fmt.tprint(top * f32(k) / 3)
+		draw_text(d, label, {axis_w - measure(label, .Caption), y - label_h / 2}, .Caption, c.text_faint)
 	}
+	return d
 }
+
 
 // ---------------------------------------------------------------------------
 // Timeline

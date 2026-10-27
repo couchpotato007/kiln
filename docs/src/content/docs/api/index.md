@@ -24,8 +24,8 @@ and a table with the type and default of every argument.
 | [Overlays](/api/overlays/) | `dialog`, `drawer`, `toast`, `menu`, `context_menu`, `tooltip` |
 | [Icons](/api/icons/) | `Icon`, `icon`, `load_icon`, the built-in `ICON_*` |
 | [Theme and units](/api/theme/) | `Theme`, `Colors`, `Metrics`, `catppuccin`, the named steps, `px`, `space`, ... |
-| [State and ids](/api/state/) | `id`, `scope`, `interact`, `widget_state`, `clicked`, `anim`, `show` / `hide`, timers |
-| [Painting](/api/paint/) | `painter`, `paint`, `paint_line`, `paint_circle`, `paint_image` |
+| [State and ids](/api/state/) | `id`, `scope`, `interact`, `pointer_events`, `widget_state`, `clicked`, `anim`, `show` / `hide`, timers |
+| [Drawing](/api/draw/) | `drawing`, `draw`, paths, `fill_path`, `stroke_path`, `draw_image`, `draw_text`, `transform`, `clip`, `opacity`, `render_image` |
 
 ## Reading a signature
 

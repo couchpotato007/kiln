@@ -7,6 +7,7 @@ package kiln
 // Without the define, tasks run on real threads (the frame test needs the snapshot backend).
 
 import "base:runtime"
+import "core:math"
 import "core:sync"
 import "core:testing"
 import "core:time"
@@ -228,14 +229,15 @@ test_svg :: proc(t: ^testing.T) {
 	free_all(context.temp_allocator)
 }
 
-// A frame with one custom widget built like an app would build it: `interact`, `widget_state`
-// and a painter. It records what the widget saw.
+// A frame with one custom widget built like an app would build it: `interact`, `pointer_events`,
+// `widget_state` and a drawing. It records what the widget saw.
 @(private = "file")
 Drag_Model :: struct {
 	s:       Interaction,
+	events:  []Pointer_Event,
 	points:  ^[dynamic][2]f32,
 	created: bool,
-	painter: ^Painter,
+	drawing: ^Drawing,
 }
 
 @(private = "file")
@@ -243,27 +245,42 @@ drag_frame :: proc(m: ^Drag_Model, mouse: [2]f32, buttons: bit_set[MouseButton],
 		None,
 		Press,
 		Release,
-	}) {
+	}, wheel: [2]f32 = {}) {
 	view :: proc(m: ^Drag_Model, _: ^[dynamic]int) {
-		if column(padding = .LG) {
+		if scroll(padding = .LG) {
 			eid := id("pad")
 			m.s = interact(eid)
+			m.events = pointer_events(eid, wheel = true)
 			Draft :: struct {
 				points: [dynamic][2]f32,
 			}
 			d: ^Draft
 			d, m.created = widget_state(eid, Draft, proc(d: ^Draft) {delete(d.points)})
-			if m.s.started {clear(&d.points)}
-			if m.s.held {append(&d.points, m.s.pos)}
+			for e in m.events {
+				switch e.kind {
+				case .Press:
+					clear(&d.points)
+					append(&d.points, e.pos)
+				case .Move:
+					if m.s.held {append(&d.points, e.pos)}
+				case .Release, .Wheel:
+				}
+			}
 			m.points = &d.points
-			m.painter = painter()
-			paint_line(m.painter, d.points[:], 2, g_theme.text)
-			if clay.UI(eid)({layout = {sizing = {clay.SizingFixed(200), clay.SizingFixed(100)}}, custom = paint(m.painter)}) {}
+			m.drawing = drawing()
+			for p, i in d.points {
+				if i == 0 {move_to(m.drawing, p)} else {line_to(m.drawing, p)}
+			}
+			stroke_path(m.drawing, g_theme.text, 2)
+			if clay.UI(eid)({layout = {sizing = {clay.SizingFixed(200), clay.SizingFixed(100)}}, custom = draw(m.drawing)}) {}
+			// Content taller than the window, so the scroll container could move.
+			if clay.UI()({layout = {sizing = {clay.SizingFixed(10), clay.SizingFixed(2000)}}}) {}
 		}
 	}
 	input := Input {
 		mouse  = mouse,
 		down   = buttons,
+		wheel  = wheel,
 		dt     = 1.0 / 60,
 		window = {400, 300},
 		dpi    = 1,
@@ -274,7 +291,7 @@ drag_frame :: proc(m: ^Drag_Model, mouse: [2]f32, buttons: bit_set[MouseButton],
 }
 
 @(test)
-test_drag_and_paint :: proc(t: ^testing.T) {
+test_drag_and_draw :: proc(t: ^testing.T) {
 	when !KILN_SNAPSHOT {return}
 	context.allocator = runtime.heap_allocator()
 	sync.mutex_lock(&g_frames_lock)
@@ -285,36 +302,127 @@ test_drag_and_paint :: proc(t: ^testing.T) {
 	drag_frame(&m, {-100, -100}, {}, .None)
 	drag_frame(&m, {-100, -100}, {}, .None)
 	testing.expect(t, !m.created)
+	testing.expect_value(t, len(m.events), 0) // the pointer is not over the pad
 
 	drag_frame(&m, {40, 50}, {.Left}, .Press)
 	testing.expect(t, m.s.started)
 	testing.expect(t, m.s.held)
 	origin := [2]f32{40, 50} - m.s.pos // the pad's top left corner
 	testing.expect(t, origin.x > 0 && origin.y > 0)
+	testing.expect_value(t, len(m.events), 2) // moved there, then pressed
+	if len(m.events) == 2 {
+		testing.expect_value(t, m.events[1].kind, Pointer_Event_Kind.Press)
+		testing.expect_value(t, m.events[1].pos, m.s.pos)
+	}
 
 	// Dragging out of the pad still belongs to it.
 	drag_frame(&m, {90, 60}, {.Left}, .None)
 	testing.expect(t, !m.s.started)
-	testing.expect_value(t, m.s.delta, [2]f32{50, 10})
 	drag_frame(&m, {500, 60}, {.Left}, .None)
 	testing.expect(t, m.s.held)
 	testing.expect(t, !m.s.hovered)
+	testing.expect_value(t, len(m.events), 1)
 
 	drag_frame(&m, {500, 60}, {}, .Release)
 	testing.expect(t, m.s.released)
 	testing.expect(t, !m.s.clicked) // released outside the pad
 	testing.expect_value(t, len(m.points), 3)
 	if len(m.points) == 3 {testing.expect_value(t, m.points[1], [2]f32{90, 60} - origin)}
-	testing.expect_value(t, len(m.painter.shapes), 1)
+	testing.expect_value(t, len(m.drawing.ops), 1)
 
-	drag_frame(&m, {500, 60}, {}, .None)
+	// Outside of the pad and without a press, nothing arrives.
+	drag_frame(&m, {500, 70}, {}, .None)
 	testing.expect(t, !m.s.released)
+	testing.expect_value(t, len(m.events), 0)
+
+	// The pad takes the wheel: the scroll container around it does not move.
+	drag_frame(&m, {40, 50}, {}, .None)
+	drag_frame(&m, {40, 50}, {}, .None, wheel = {0, -40})
+	testing.expect_value(t, m.events[len(m.events) - 1].kind, Pointer_Event_Kind.Wheel)
+	drag_frame(&m, {40, 50}, {}, .None)
+	testing.expect_value(t, [2]f32{40, 50} - m.s.pos, origin)
 
 	// The state is freed with `destroy` once the widget is gone for long enough.
-	testing.expect(t, m.s.pos != {})
 	testing.expect(t, len(g_widget_states) >= 1)
 	g_frame += STALE_FRAMES + 1
 	collect_garbage()
 	testing.expect_value(t, len(g_widget_states), 0)
+	free_all(context.temp_allocator)
+}
+
+// Alpha of the pixel at (x, y) of a drawing rendered at w x h.
+@(private = "file")
+draw_alpha :: proc(d: ^Drawing, w, h, x, y: int) -> u8 {
+	return draw_rasterize(d, w, h, {}, context.temp_allocator)[y * w + x].a
+}
+
+@(test)
+test_drawing :: proc(t: ^testing.T) {
+	black := Color{0, 0, 0, 255}
+
+	// A filled square covers its pixels, nothing outside; even-odd leaves the hole of a ring.
+	d := drawing()
+	rect_path(d, {2, 2}, {6, 6})
+	fill_path(d, black)
+	testing.expect_value(t, draw_alpha(d, 10, 10, 5, 5), 255)
+	testing.expect_value(t, draw_alpha(d, 10, 10, 1, 5), 0)
+	d = drawing()
+	rect_path(d, {1, 1}, {8, 8})
+	rect_path(d, {3, 3}, {4, 4})
+	fill_path(d, black, even_odd = true)
+	testing.expect_value(t, draw_alpha(d, 10, 10, 5, 5), 0)
+	testing.expect_value(t, draw_alpha(d, 10, 10, 2, 5), 255)
+
+	// A stroke of width 2 along y = 5 covers rows 4 and 5; with scale 2 everything doubles.
+	d = drawing()
+	move_to(d, {1, 5})
+	line_to(d, {9, 5})
+	stroke_path(d, black, 2, .Butt)
+	testing.expect_value(t, draw_alpha(d, 10, 10, 5, 4), 255)
+	testing.expect_value(t, draw_alpha(d, 10, 10, 5, 6), 0)
+	d = drawing(2)
+	rect_path(d, {1, 1}, {2, 2})
+	fill_path(d, black)
+	testing.expect_value(t, draw_alpha(d, 10, 10, 5, 5), 255)
+	testing.expect_value(t, draw_alpha(d, 10, 10, 7, 5), 0)
+
+	// Overlapping translucent strokes of one path do not get darker where they cross.
+	d = drawing()
+	move_to(d, {0, 5})
+	line_to(d, {10, 5})
+	line_to(d, {5, 0})
+	line_to(d, {5, 10})
+	stroke_path(d, {0, 0, 0, 128}, 2)
+	testing.expect_value(t, draw_alpha(d, 10, 10, 5, 5), 128)
+
+	// Transforms: a square turned by 45° around (5, 5) covers the middle but not the corners.
+	d = drawing()
+	if transform(d, translate = {5, 5}, rotate = math.PI / 4) {
+		rect_path(d, {-3, -3}, {6, 6})
+		fill_path(d, black)
+	}
+	rect_path(d, {0, 0}, {1, 1}) // after the block, untransformed again
+	fill_path(d, black)
+	testing.expect_value(t, draw_alpha(d, 10, 10, 5, 5), 255)
+	testing.expect_value(t, draw_alpha(d, 10, 10, 0, 0), 255)
+	testing.expect_value(t, draw_alpha(d, 10, 10, 9, 9), 0)
+
+	// Clips cut off, opacity groups blend once.
+	d = drawing()
+	rect_path(d, {0, 0}, {5, 10})
+	if clip(d) {
+		rect_path(d, {0, 0}, {10, 10})
+		fill_path(d, black)
+	}
+	testing.expect_value(t, draw_alpha(d, 10, 10, 2, 5), 255)
+	testing.expect_value(t, draw_alpha(d, 10, 10, 7, 5), 0)
+	d = drawing()
+	if opacity(d, 0.5) {
+		rect_path(d, {0, 0}, {10, 10})
+		fill_path(d, black)
+		rect_path(d, {0, 0}, {10, 10})
+		fill_path(d, black)
+	}
+	testing.expect_value(t, draw_alpha(d, 10, 10, 5, 5), 128)
 	free_all(context.temp_allocator)
 }

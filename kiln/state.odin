@@ -127,11 +127,7 @@ Interaction :: struct {
 	released:      bool, // the left button that went down on the element was released in this frame, anywhere
 	disabled:      bool,
 	pos:           [2]f32, // pointer position in pixels, relative to the element's top left corner (as laid out in the previous frame)
-	delta:         [2]f32, // pointer movement since the previous frame in pixels
 }
-
-@(private)
-g_pointer_delta: [2]f32
 
 @(private)
 g_active: u32 // element that owns the current left press
@@ -161,7 +157,6 @@ interact :: proc(eid: Id, disabled := false) -> (s: Interaction) {
 	}
 	d := clay.GetElementData(eid)
 	s.pos = g_in.mouse - {d.boundingBox.x, d.boundingBox.y}
-	s.delta = g_pointer_delta
 	s.right_clicked = g_right == eid.id
 	return
 }
@@ -172,8 +167,10 @@ interaction_begin :: proc() {
 	clear(&g_interactive)
 	g_right = 0
 
+	g_hot = topmost_interactive()
+
 	if g_in.pressed == {} {return}
-	target := topmost_interactive()
+	target := g_hot
 	if .Left in g_in.pressed {
 		g_active = target
 		if target != g_focus {g_focus = 0}
@@ -196,6 +193,95 @@ topmost_interactive :: proc() -> u32 {
 		if g_interactive_prev[pid] {return pid}
 	}
 	return 0
+}
+
+// ---------------------------------------------------------------------------
+// Pointer events
+// ---------------------------------------------------------------------------
+
+Pointer_Event_Kind :: enum {
+	Move,
+	Press,
+	Release,
+	Wheel,
+}
+
+// One thing the pointer did, in the order it happened. Several moves in one frame are the
+// pointer's path between frames, if the platform reports it.
+Pointer_Event :: struct {
+	kind:      Pointer_Event_Kind,
+	button:    MouseButton, // Press and Release
+	pos:       [2]f32, // pixels, relative to the element's top left corner (window for the backend)
+	wheel:     [2]f32, // Wheel: pixels to scroll
+	pressure:  f32, // 0..1; 1 for devices without pressure, like a mouse
+	modifiers: bit_set[Modifier],
+	time:      f64, // seconds since the app started
+}
+
+@(private)
+g_events: []Pointer_Event // this frame's events, window coordinates
+@(private)
+g_hot: u32 // the topmost interactive element under the pointer
+@(private)
+g_wheel_claims, g_wheel_claims_prev: map[u32]bool
+
+// The pointer events of this frame that belong to an element: all of them while a press that
+// started on it goes on (even outside of it), otherwise those over it while it is the topmost
+// interactive element. Call `interact` for the element before, every frame. With `wheel`, the
+// element takes the mouse wheel: scroll containers around it do not scroll while the pointer
+// is over it. The events live until the end of the frame.
+//
+//   for e in kiln.pointer_events(eid) {
+//       if e.kind == .Move && s.held {append(&points, e.pos)}
+//   }
+pointer_events :: proc(eid: Id, wheel := false) -> []Pointer_Event {
+	if wheel {g_wheel_claims[eid.id] = true}
+	if g_active != eid.id && !(g_active == 0 && g_hot == eid.id) {return nil}
+	d := clay.GetElementData(eid)
+	origin := [2]f32{d.boundingBox.x, d.boundingBox.y}
+	out := make([]Pointer_Event, len(g_events), context.temp_allocator)
+	for e, i in g_events {
+		out[i] = e
+		out[i].pos -= origin
+	}
+	return out
+}
+
+// The events of a frame from the backend's input, for backends that do not report them one by
+// one: a move to the new position, then presses, the wheel and releases.
+@(private)
+events_from_input :: proc(prev, in_: Input) -> []Pointer_Event {
+	out := make([dynamic]Pointer_Event, context.temp_allocator)
+	mods := bit_set[Modifier]{}
+	if in_.shift {mods += {.Shift}}
+	if in_.ctrl {mods += {.Ctrl}}
+	base := Pointer_Event {
+		pos       = in_.mouse,
+		pressure  = 1,
+		modifiers = mods,
+		time      = in_.time,
+	}
+	if in_.mouse != prev.mouse {
+		e := base
+		e.kind = .Move
+		append(&out, e)
+	}
+	for b in in_.pressed {
+		e := base
+		e.kind, e.button = .Press, b
+		append(&out, e)
+	}
+	if in_.wheel != {} {
+		e := base
+		e.kind, e.wheel = .Wheel, in_.wheel
+		append(&out, e)
+	}
+	for b in in_.released {
+		e := base
+		e.kind, e.button = .Release, b
+		append(&out, e)
+	}
+	return out[:]
 }
 
 // ---------------------------------------------------------------------------

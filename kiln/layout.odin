@@ -380,17 +380,21 @@ scrollable :: proc(eid: Id) {
 	g_scrollers[eid.id] = true
 }
 
-// Scrolls the innermost vertical scroll container under the pointer that can still move;
+// Scrolls the innermost vertical scroll container under the pointer that can still move
+// (unless a widget in it takes the wheel, see `pointer_events`);
 // at its end the wheel goes on to the container around it.
 @(private)
 wheel_scroll :: proc() {
 	g_scrollers, g_scrollers_prev = g_scrollers_prev, g_scrollers
+	g_wheel_claims, g_wheel_claims_prev = g_wheel_claims_prev, g_wheel_claims
+	clear(&g_wheel_claims)
 	clear(&g_scrollers)
 	if g_in.wheel.y == 0 {return}
 
 	over := clay.GetPointerOverIds()
 	for i := over.length - 1; i >= 0; i -= 1 {
 		eid := over.internalArray[i]
+		if g_wheel_claims_prev[eid.id] {return} // a widget under the pointer takes the wheel
 		if !g_scrollers_prev[eid.id] {continue}
 		d := clay.GetScrollContainerData(eid)
 		if !d.found || d.scrollPosition == nil {continue}

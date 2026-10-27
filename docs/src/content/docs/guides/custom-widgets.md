@@ -16,9 +16,10 @@ These building blocks make them behave like kiln's own:
 | proc | what |
 | --- | --- |
 | [`id`](/api/state/#id), [`sub_id`](/api/state/#sub_id) | stable ids (`id` counts equal labels, `sub_id` for parts of a widget) |
-| [`interact`](/api/state/#interact) | hover / press / click of an element, call before declaring it; also the pointer position in the element, its movement and the start / end of a drag |
+| [`interact`](/api/state/#interact) | hover / press / click of an element, call before declaring it; also the pointer position in the element and the start / end of a press |
+| [`pointer_events`](/api/state/#pointer_events) | the raw pointer events of the frame that belong to an element (moves, presses, releases, wheel) |
 | [`widget_state`](/api/state/#widget_state) | a `^T` per element that kiln keeps between frames (a drag in progress, a cache) |
-| [`painter`](/api/paint/#painter), [`paint`](/api/paint/#paint), [`paint_line`](/api/paint/#paint_line), [`paint_circle`](/api/paint/#paint_circle), [`paint_image`](/api/paint/#paint_image) | lines, circles and images drawn into an element |
+| [`drawing`](/api/draw/#drawing), [`draw`](/api/draw/#draw) and the [drawing procs](/api/draw/) | vector graphics in an element: paths, fills, strokes, images, text, transforms, clips, opacity |
 | [`key_pressed`](/api/app/#key_pressed), [`modifiers`](/api/app/#modifiers) | keyboard shortcuts |
 | [`set_last`](/api/state/#set_last) | makes `clicked`, `hovered`, `tooltip`, `context_menu` refer to it |
 | [`tooltip_on`](/api/overlays/#tooltip_on) | a tooltip for any element, e.g. one bar of a chart |
@@ -62,27 +63,55 @@ A press goes to the topmost interactive element under the pointer, so a button i
 clickable list item takes the click and the item does not.
 :::
 
-## Drawing and dragging
+## Drawing and pointer input
 
-A widget that the pointer drags across (a drawing surface, a color wheel, a splitter) needs more
-than `clicked`. The `Interaction` from `interact` also has:
+kiln has no canvas, chart or graph widget kind of its own to extend. Like GTK's `snapshot` and
+event controllers, it gives every custom widget two general tools, and the widget decides what
+they mean.
+
+### Input: pointer events
+
+`pointer_events(eid)` returns what the pointer did in this frame, in order, as far as it belongs
+to the element: everything while a press that started on it goes on (even outside of it),
+otherwise what happens over it while it is the topmost interactive element. Call `interact` for
+the element first.
 
 | field | what |
 | --- | --- |
-| `started` | the left button went down on the element in this frame |
-| `held` | the press that started on the element goes on, even outside of it |
-| `released` | that press ended in this frame, wherever the pointer is |
-| `pos` | the pointer in pixels, relative to the element's top left corner |
-| `delta` | how far the pointer moved since the previous frame, in pixels |
+| `kind` | `.Move`, `.Press`, `.Release` or `.Wheel` |
+| `button` | for presses and releases |
+| `pos` | pixels, relative to the element's top left corner |
+| `wheel` | pixels to scroll |
+| `pressure` | 0..1, 1 for a mouse |
+| `modifiers`, `time` | Shift / Ctrl, and seconds since the app started |
 
-State that belongs to the widget and not to the app, like the stroke that is being drawn, goes
-into `widget_state`. It is zeroed the first time, and freed when the widget has not been shown
-for a while; the `destroy` proc frees what it owns.
+Several moves in one frame are the pointer's path between frames, so fast strokes keep their
+shape where the platform reports it (the raylib backend reports one position per frame). With
+`pointer_events(eid, wheel = true)` the element takes the mouse wheel: the scroll containers
+around it do not scroll while the pointer is over it.
 
-Shapes are drawn with a painter. It collects lines, circles and images for this frame, and
-`custom = kiln.paint(p)` hands it to an element, which draws its background, then the shapes
-(cut off at its bounds), then its border and children. With `painter(kiln.scale_factor())` the
-coordinates are in units, so the drawing follows the zoom:
+`interact` stays the short way for the common cases: `held`, `started` and `released` of the
+left button, and `pos`.
+
+### Output: drawings
+
+A drawing records vector graphics for one frame, like a Cairo context or a `GtkSnapshot`, and
+`custom = kiln.draw(d)` shows it in an element: behind the element's border and children, cut
+off at its bounds.
+
+- **Paths:** `move_to`, `line_to`, `quad_to`, `curve_to`, `arc`, `close_path`, and the shortcuts
+  `rect_path` (with corner radius) and `circle_path`.
+- **Painting a path:** `fill_path` (nonzero or even-odd) and `stroke_path` (width, caps, joins).
+  Both use up the path.
+- **More:** `draw_image` and `draw_text` (filled letter outlines, so text turns and scales too).
+- **Blocks** like containers: `transform` (move, turn, scale), `clip` (to the current path) and
+  `opacity` (the content is blended once, so overlapping parts do not show through).
+- **Offscreen:** `render_image` draws a drawing into an image once, for pictures that are
+  expensive and change rarely.
+
+With `drawing(kiln.scale_factor())` coordinates are in units, so a drawing follows the zoom.
+Drawings render the same in the window and in snapshots, and the window keeps a drawing's
+pixels in a texture until the drawing changes.
 
 ```odin
 Draft :: struct {points: [dynamic][2]f32}
@@ -91,17 +120,29 @@ sketch :: proc(color: kiln.Color) -> (points: [][2]f32, done: bool) {
 	eid := kiln.id("sketch")
 	s := kiln.interact(eid)
 	draft, _ := kiln.widget_state(eid, Draft, proc(d: ^Draft) {delete(d.points)})
+	scale := kiln.scale_factor()
 
-	if s.started {clear(&draft.points)}
-	if s.held {append(&draft.points, s.pos / kiln.scale_factor())}
-	if s.released {points, done = draft.points[:], true} // copy it in `update`
+	for e in kiln.pointer_events(eid) {
+		#partial switch e.kind {
+		case .Press:
+			clear(&draft.points)
+			append(&draft.points, e.pos / scale)
+		case .Move:
+			if s.held {append(&draft.points, e.pos / scale)}
+		case .Release:
+			points, done = draft.points[:], true // copy it in `update`
+		}
+	}
 
-	p := kiln.painter(kiln.scale_factor())
-	kiln.paint_line(p, draft.points[:], 3, color)
+	d := kiln.drawing(scale)
+	for p, i in draft.points {
+		if i == 0 {kiln.move_to(d, p)} else {kiln.line_to(d, p)}
+	}
+	kiln.stroke_path(d, color, width = 3)
 	if clay.UI(eid)({
 		layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(kiln.px(240))}},
 		backgroundColor = kiln.theme().sunken,
-		custom = kiln.paint(p),
+		custom = kiln.draw(d),
 	}) {}
 	kiln.set_last(eid, s)
 	return
@@ -110,4 +151,6 @@ sketch :: proc(color: kiln.Color) -> (points: [][2]f32, done: bool) {
 
 The finished drawing belongs to the model: the widget returns a stroke when the pointer is
 released, and `update` stores it. That gives undo and saving for free. The full version, with
-colors, a brush preview and Ctrl+Z, is the "Zeichnen" page of the demo (`example/canvas`).
+colors, a brush preview, the wheel for the pen width, Ctrl+Z and an image of the finished
+strokes, is the "Zeichnen" page of the demo (`example/canvas`). kiln's own bar chart draws its
+value axis the same way.

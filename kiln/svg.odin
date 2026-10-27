@@ -10,7 +10,6 @@ package kiln
 // any size is only scan conversion: icons stay sharp at every zoom level.
 
 import "core:math"
-import "core:slice"
 import "core:strings"
 
 @(private)
@@ -20,12 +19,11 @@ Svg :: struct {
 	mono:   bool, // only one color (or currentColor): drawn white and tinted like text
 }
 
-// Polygons filled with one color. `ends` holds the end index (into `points`) of each polygon.
+// Polygons filled with one color.
 @(private)
 SvgShape :: struct {
-	points:   [dynamic][2]f32,
-	ends:     [dynamic]int,
-	even_odd: bool,
+	using polys: Polygons,
+	even_odd:    bool,
 	color:    Color, // alpha includes the opacity
 	current:  bool, // currentColor: the color comes from the tint
 }
@@ -54,26 +52,6 @@ Paint :: struct {
 	color: Color,
 }
 
-@(private = "file")
-Cap :: enum {
-	Butt,
-	Round,
-	Square,
-}
-
-@(private = "file")
-Join :: enum {
-	Miter,
-	Round,
-	Bevel,
-}
-
-// a, b, c, d, e, f: x' = a*x + c*y + e, y' = b*x + d*y + f
-@(private = "file")
-Mat :: [6]f32
-
-@(private = "file")
-IDENTITY :: Mat{1, 0, 0, 1, 0, 0}
 
 // The inherited presentation attributes of an element.
 @(private = "file")
@@ -81,8 +59,8 @@ Style :: struct {
 	fill, stroke:                          Paint,
 	stroke_width, miter_limit:             f32,
 	opacity, fill_opacity, stroke_opacity: f32,
-	cap:                                   Cap,
-	join:                                  Join,
+	cap:                                   Line_Cap,
+	join:                                  Line_Join,
 	even_odd:                              bool,
 	m:                                     Mat,
 	hidden:                                bool,
@@ -119,7 +97,7 @@ svg_parse :: proc(src: string) -> (svg: Svg, ok: bool) {
 		opacity        = 1,
 		fill_opacity   = 1,
 		stroke_opacity = 1,
-		m              = IDENTITY,
+		m              = MAT_IDENTITY,
 	}
 	stack := make([dynamic]Style, context.temp_allocator)
 	append(&stack, root)
@@ -380,7 +358,7 @@ parse_color :: proc(s: string) -> (Color, bool) {
 
 @(private = "file")
 parse_transform :: proc(s: string) -> Mat {
-	m := IDENTITY
+	m := MAT_IDENTITY
 	rest := s
 	for {
 		open := strings.index_byte(rest, '(')
@@ -396,7 +374,7 @@ parse_transform :: proc(s: string) -> Mat {
 			a[n] = v
 			n += 1
 		}
-		t := IDENTITY
+		t := MAT_IDENTITY
 		switch name {
 		case "matrix":
 			if n == 6 {t = a}
@@ -422,29 +400,6 @@ parse_transform :: proc(s: string) -> Mat {
 	return m
 }
 
-// `m` after `n`: applies `n` first.
-@(private = "file")
-mat_mul :: proc(m, n: Mat) -> Mat {
-	return {
-		m[0] * n[0] + m[2] * n[1],
-		m[1] * n[0] + m[3] * n[1],
-		m[0] * n[2] + m[2] * n[3],
-		m[1] * n[2] + m[3] * n[3],
-		m[0] * n[4] + m[2] * n[5] + m[4],
-		m[1] * n[4] + m[3] * n[5] + m[5],
-	}
-}
-
-@(private = "file")
-apply :: proc(m: Mat, p: [2]f32) -> [2]f32 {
-	return {m[0] * p.x + m[2] * p.y + m[4], m[1] * p.x + m[3] * p.y + m[5]}
-}
-
-// How much the transform scales lengths (on average).
-@(private = "file")
-mat_scale :: proc(m: Mat) -> f32 {
-	return math.sqrt(abs(m[0] * m[3] - m[1] * m[2]))
-}
 
 // ---------------------------------------------------------------------------
 // Numbers
@@ -534,142 +489,9 @@ number_attr :: proc(attrs: map[string]string, key: string, default: f32) -> f32 
 	return ok ? v : default
 }
 
-// ---------------------------------------------------------------------------
-// Geometry: elements become polylines, then filled and stroked polygons
-// ---------------------------------------------------------------------------
-
-// Polylines in viewBox units, built from user-space commands.
-@(private = "file")
-Builder :: struct {
-	m:      Mat,
-	tol:    f32, // in viewBox units
-	points: [dynamic][2]f32,
-	ends:   [dynamic]int, // end of each subpath in `points`
-	closed: [dynamic]bool,
-}
-
-@(private = "file")
-move_to :: proc(b: ^Builder, p: [2]f32) {
-	end_subpath(b, false)
-	append(&b.points, apply(b.m, p))
-}
-
-@(private = "file")
-line_to :: proc(b: ^Builder, p: [2]f32) {
-	append(&b.points, apply(b.m, p))
-}
-
-@(private = "file")
-end_subpath :: proc(b: ^Builder, closed: bool) {
-	start := len(b.ends) > 0 ? b.ends[len(b.ends) - 1] : 0
-	if len(b.points) == start {return}
-	append(&b.ends, len(b.points))
-	append(&b.closed, closed)
-}
-
-// Number of line segments for a curve whose second differences are at most `dd` (Wang's formula).
-@(private = "file")
-curve_steps :: proc(dd, factor, tol: f32) -> int {
-	return clamp(int(math.ceil(math.sqrt(factor * dd / tol))), 1, 128)
-}
-
-@(private = "file")
-cubic_to :: proc(b: ^Builder, p0, p1, p2, p3: [2]f32) {
-	a, c1, c2, d := apply(b.m, p0), apply(b.m, p1), apply(b.m, p2), apply(b.m, p3)
-	dd := max(linalg_len(a - 2 * c1 + c2), linalg_len(c1 - 2 * c2 + d))
-	n := curve_steps(dd, 0.75, b.tol)
-	for k in 1 ..= n {
-		t := f32(k) / f32(n)
-		u := 1 - t
-		append(&b.points, u * u * u * a + 3 * u * u * t * c1 + 3 * u * t * t * c2 + t * t * t * d)
-	}
-}
-
-@(private = "file")
-quad_to :: proc(b: ^Builder, p0, p1, p2: [2]f32) {
-	a, c, d := apply(b.m, p0), apply(b.m, p1), apply(b.m, p2)
-	n := curve_steps(linalg_len(a - 2 * c + d), 0.25, b.tol)
-	for k in 1 ..= n {
-		t := f32(k) / f32(n)
-		u := 1 - t
-		append(&b.points, u * u * a + 2 * u * t * c + t * t * d)
-	}
-}
-
-@(private = "file")
-linalg_len :: proc(v: [2]f32) -> f32 {
-	return math.sqrt(v.x * v.x + v.y * v.y)
-}
-
-// Segments for an arc of `angle` radians and radius `r` (viewBox units).
-@(private = "file")
-arc_steps :: proc(r, angle, tol: f32) -> int {
-	if r <= tol {return clamp(int(math.ceil(abs(angle) / (math.PI / 4))), 1, 8)}
-	step := 2 * math.acos(clamp(1 - tol / r, -1, 1))
-	return clamp(int(math.ceil(abs(angle) / max(step, 0.01))), 1, 256)
-}
-
-// An elliptical arc as in SVG's "A" command (endpoint parameterization, SVG spec F.6.5).
-@(private = "file")
-arc_to :: proc(b: ^Builder, p0: [2]f32, radii: [2]f32, rotation: f32, large, sweep: bool, p1: [2]f32) {
-	if p0 == p1 {return}
-	rx, ry := abs(radii.x), abs(radii.y)
-	if rx == 0 || ry == 0 {
-		line_to(b, p1)
-		return
-	}
-	phi := rotation * math.RAD_PER_DEG
-	cs, sn := math.cos(phi), math.sin(phi)
-	dx, dy := (p0.x - p1.x) / 2, (p0.y - p1.y) / 2
-	x1, y1 := cs * dx + sn * dy, -sn * dx + cs * dy
-	lambda := x1 * x1 / (rx * rx) + y1 * y1 / (ry * ry)
-	if lambda > 1 {
-		s := math.sqrt(lambda)
-		rx, ry = rx * s, ry * s
-	}
-	num := rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1
-	den := rx * rx * y1 * y1 + ry * ry * x1 * x1
-	coef := den > 0 ? math.sqrt(max(0, num / den)) : 0
-	if large == sweep {coef = -coef}
-	cxp, cyp := coef * rx * y1 / ry, -coef * ry * x1 / rx
-	cx := cs * cxp - sn * cyp + (p0.x + p1.x) / 2
-	cy := sn * cxp + cs * cyp + (p0.y + p1.y) / 2
-	ux, uy := (x1 - cxp) / rx, (y1 - cyp) / ry
-	vx, vy := (-x1 - cxp) / rx, (-y1 - cyp) / ry
-	start := math.atan2(uy, ux)
-	delta := math.atan2(ux * vy - uy * vx, ux * vx + uy * vy)
-	if !sweep && delta > 0 {delta -= 2 * math.PI}
-	if sweep && delta < 0 {delta += 2 * math.PI}
-
-	n := arc_steps(max(rx, ry) * mat_scale(b.m), delta, b.tol)
-	for k in 1 ..= n {
-		t := start + delta * f32(k) / f32(n)
-		if k == n {
-			line_to(b, p1)
-		} else {
-			line_to(b, {cx + cs * rx * math.cos(t) - sn * ry * math.sin(t), cy + sn * rx * math.cos(t) + cs * ry * math.sin(t)})
-		}
-	}
-}
-
-@(private = "file")
-ellipse :: proc(b: ^Builder, c, r: [2]f32) {
-	if r.x <= 0 || r.y <= 0 {return}
-	move_to(b, {c.x + r.x, c.y})
-	arc_to(b, {c.x + r.x, c.y}, r, 0, false, true, {c.x - r.x, c.y})
-	arc_to(b, {c.x - r.x, c.y}, r, 0, false, true, {c.x + r.x, c.y})
-	end_subpath(b, true)
-}
-
 @(private = "file")
 add_element :: proc(svg: ^Svg, name: string, attrs: map[string]string, st: Style, tol: f32) {
-	b := Builder {
-		m      = st.m,
-		tol    = tol,
-		points = make([dynamic][2]f32, context.temp_allocator),
-		ends   = make([dynamic]int, context.temp_allocator),
-		closed = make([dynamic]bool, context.temp_allocator),
-	}
+	b := path_builder(st.m, tol)
 	num :: proc(attrs: map[string]string, key: string) -> f32 {return number_attr(attrs, key, 0)}
 
 	switch name {
@@ -685,32 +507,32 @@ add_element :: proc(svg: ^Svg, name: string, attrs: map[string]string, st: Style
 		if !has_ry {ry = rx}
 		rx, ry = clamp(rx, 0, w / 2), clamp(ry, 0, h / 2)
 		if rx == 0 || ry == 0 {
-			move_to(&b, {x, y})
-			line_to(&b, {x + w, y})
-			line_to(&b, {x + w, y + h})
-			line_to(&b, {x, y + h})
+			path_move(&b, {x, y})
+			path_line(&b, {x + w, y})
+			path_line(&b, {x + w, y + h})
+			path_line(&b, {x, y + h})
 		} else {
 			r := [2]f32{rx, ry}
-			move_to(&b, {x + rx, y})
-			line_to(&b, {x + w - rx, y})
-			arc_to(&b, {x + w - rx, y}, r, 0, false, true, {x + w, y + ry})
-			line_to(&b, {x + w, y + h - ry})
-			arc_to(&b, {x + w, y + h - ry}, r, 0, false, true, {x + w - rx, y + h})
-			line_to(&b, {x + rx, y + h})
-			arc_to(&b, {x + rx, y + h}, r, 0, false, true, {x, y + h - ry})
-			line_to(&b, {x, y + ry})
-			arc_to(&b, {x, y + ry}, r, 0, false, true, {x + rx, y})
+			path_move(&b, {x + rx, y})
+			path_line(&b, {x + w - rx, y})
+			path_arc_svg(&b, {x + w - rx, y}, r, 0, false, true, {x + w, y + ry})
+			path_line(&b, {x + w, y + h - ry})
+			path_arc_svg(&b, {x + w, y + h - ry}, r, 0, false, true, {x + w - rx, y + h})
+			path_line(&b, {x + rx, y + h})
+			path_arc_svg(&b, {x + rx, y + h}, r, 0, false, true, {x, y + h - ry})
+			path_line(&b, {x, y + ry})
+			path_arc_svg(&b, {x, y + ry}, r, 0, false, true, {x + rx, y})
 		}
-		end_subpath(&b, true)
+		path_end(&b, true)
 	case "circle":
 		r := num(attrs, "r")
-		ellipse(&b, {num(attrs, "cx"), num(attrs, "cy")}, {r, r})
+		path_ellipse(&b, {num(attrs, "cx"), num(attrs, "cy")}, {r, r})
 	case "ellipse":
-		ellipse(&b, {num(attrs, "cx"), num(attrs, "cy")}, {num(attrs, "rx"), num(attrs, "ry")})
+		path_ellipse(&b, {num(attrs, "cx"), num(attrs, "cy")}, {num(attrs, "rx"), num(attrs, "ry")})
 	case "line":
-		move_to(&b, {num(attrs, "x1"), num(attrs, "y1")})
-		line_to(&b, {num(attrs, "x2"), num(attrs, "y2")})
-		end_subpath(&b, false)
+		path_move(&b, {num(attrs, "x1"), num(attrs, "y1")})
+		path_line(&b, {num(attrs, "x2"), num(attrs, "y2")})
+		path_end(&b, false)
 	case "polyline", "polygon":
 		l := Lexer{s = attrs["points"]}
 		first := true
@@ -718,12 +540,12 @@ add_element :: proc(svg: ^Svg, name: string, attrs: map[string]string, st: Style
 			x, okx := number(&l)
 			y, oky := number(&l)
 			if !okx || !oky {break}
-			if first {move_to(&b, {x, y})} else {line_to(&b, {x, y})}
+			if first {path_move(&b, {x, y})} else {path_line(&b, {x, y})}
 			first = false
 		}
-		end_subpath(&b, name == "polygon")
+		path_end(&b, name == "polygon")
 	}
-	end_subpath(&b, false)
+	path_end(&b, false)
 	if len(b.ends) == 0 {return}
 
 	if st.fill.kind != .None {
@@ -732,15 +554,13 @@ add_element :: proc(svg: ^Svg, name: string, attrs: map[string]string, st: Style
 			color    = paint_color(st.fill, st.opacity * st.fill_opacity),
 			current  = st.fill.kind == .Current,
 		}
-		start := 0
-		for end in b.ends {
-			if end - start >= 3 {
-				append(&shape.points, ..b.points[start:end])
-				append(&shape.ends, len(shape.points))
-			}
-			start = end
+		path_polygons(&shape.polys, &b)
+		if len(shape.ends) > 0 {
+			append(&svg.shapes, shape)
+		} else {
+			delete(shape.points)
+			delete(shape.ends)
 		}
-		if len(shape.ends) > 0 {append(&svg.shapes, shape)} else {delete(shape.points)}
 	}
 
 	if st.stroke.kind != .None && st.stroke_width > 0 {
@@ -751,7 +571,7 @@ add_element :: proc(svg: ^Svg, name: string, attrs: map[string]string, st: Style
 		hw := st.stroke_width / 2 * mat_scale(st.m)
 		start := 0
 		for end, k in b.ends {
-			stroke(&shape, b.points[start:end], b.closed[k], hw, st, tol)
+			poly_stroke(&shape.polys, b.points[start:end], b.closed[k], hw, st.cap, st.join, st.miter_limit, tol)
 			start = end
 		}
 		if len(shape.ends) > 0 {
@@ -773,7 +593,7 @@ paint_color :: proc(p: Paint, opacity: f32) -> Color {
 // Path data ("M4 6h16 a2 2 0 0 1 2 2z ..."). Stops at the first error and keeps what came before,
 // as browsers do.
 @(private = "file")
-path_data :: proc(b: ^Builder, d: string) {
+path_data :: proc(b: ^Path_Builder, d: string) {
 	l := Lexer{s = d}
 	cmd: u8 = 0
 	prev: u8 = 0 // previous command, for the reflected control points of S and T
@@ -787,7 +607,7 @@ path_data :: proc(b: ^Builder, d: string) {
 			cmd = c
 			l.i += 1
 			if cmd == 'z' || cmd == 'Z' {
-				end_subpath(b, true)
+				path_end(b, true)
 				cur, prev = start, cmd
 				continue
 			}
@@ -807,27 +627,27 @@ path_data :: proc(b: ^Builder, d: string) {
 		case 'm':
 			p: [2]f32
 			if p, ok = pt(&l, base); !ok {break}
-			move_to(b, p)
+			path_move(b, p)
 			cur, start = p, p
 			cmd = rel ? 'l' : 'L' // further pairs are line-tos
 		case 'l':
 			p: [2]f32
 			if p, ok = pt(&l, base); !ok {break}
 			line_to_start(b, cur)
-			line_to(b, p)
+			path_line(b, p)
 			cur = p
 		case 'h':
 			x: f32
 			if x, ok = number(&l); !ok {break}
 			line_to_start(b, cur)
 			cur.x = rel ? cur.x + x : x
-			line_to(b, cur)
+			path_line(b, cur)
 		case 'v':
 			y: f32
 			if y, ok = number(&l); !ok {break}
 			line_to_start(b, cur)
 			cur.y = rel ? cur.y + y : y
-			line_to(b, cur)
+			path_line(b, cur)
 		case 'c', 's':
 			p1, p2, p: [2]f32
 			if cmd | 0x20 == 'c' {
@@ -838,7 +658,7 @@ path_data :: proc(b: ^Builder, d: string) {
 			if p2, ok = pt(&l, base); !ok {break}
 			if p, ok = pt(&l, base); !ok {break}
 			line_to_start(b, cur)
-			cubic_to(b, cur, p1, p2, p)
+			path_cubic(b, cur, p1, p2, p)
 			cur, ctrl = p, p2
 		case 'q', 't':
 			p1, p: [2]f32
@@ -849,7 +669,7 @@ path_data :: proc(b: ^Builder, d: string) {
 			}
 			if p, ok = pt(&l, base); !ok {break}
 			line_to_start(b, cur)
-			quad_to(b, cur, p1, p)
+			path_quad(b, cur, p1, p)
 			cur, ctrl = p, p1
 		case 'a':
 			rx, ry, rot: f32
@@ -862,7 +682,7 @@ path_data :: proc(b: ^Builder, d: string) {
 			p: [2]f32
 			if p, ok = pt(&l, base); !ok {break}
 			line_to_start(b, cur)
-			arc_to(b, cur, {rx, ry}, rot, large, sweep, p)
+			path_arc_svg(b, cur, {rx, ry}, rot, large, sweep, p)
 			cur = p
 		case:
 			ok = false
@@ -875,111 +695,14 @@ path_data :: proc(b: ^Builder, d: string) {
 // Makes sure a subpath is open before a segment appends to it (a segment right after "z" starts
 // a new subpath at the current point).
 @(private = "file")
-line_to_start :: proc(b: ^Builder, cur: [2]f32) {
+line_to_start :: proc(b: ^Path_Builder, cur: [2]f32) {
 	start := len(b.ends) > 0 ? b.ends[len(b.ends) - 1] : 0
-	if len(b.points) == start {append(&b.points, apply(b.m, cur))}
-}
-
-// Adds a polygon with counter-clockwise winding, so overlapping stroke pieces add up under the
-// nonzero rule.
-@(private = "file")
-add_ccw :: proc(shape: ^SvgShape, pts: ..[2]f32) {
-	area: f32 = 0
-	for p, i in pts {
-		q := pts[(i + 1) % len(pts)]
-		area += p.x * q.y - q.x * p.y
-	}
-	if abs(area) < 1e-9 {return}
-	if area > 0 {
-		append(&shape.points, ..pts)
-	} else {
-		#reverse for p in pts {append(&shape.points, p)}
-	}
-	append(&shape.ends, len(shape.points))
-}
-
-@(private = "file")
-circle :: proc(shape: ^SvgShape, c: [2]f32, r, tol: f32) {
-	n := max(8, arc_steps(r, 2 * math.PI, tol))
-	pts := make([][2]f32, n, context.temp_allocator)
-	for &p, k in pts {
-		t := 2 * math.PI * f32(k) / f32(n)
-		p = c + r * [2]f32{math.cos(t), math.sin(t)}
-	}
-	add_ccw(shape, ..pts)
-}
-
-// The outline of a stroked polyline as convex pieces: one quad per segment plus joins and caps.
-// Filled together with the nonzero rule they give the union.
-@(private = "file")
-stroke :: proc(shape: ^SvgShape, polyline: [][2]f32, closed: bool, hw: f32, st: Style, tol: f32) {
-	pts := make([dynamic][2]f32, 0, len(polyline), context.temp_allocator)
-	eps := tol * 0.01
-	for p in polyline {
-		if len(pts) == 0 || linalg_len(p - pts[len(pts) - 1]) > eps {append(&pts, p)}
-	}
-	if closed && len(pts) > 1 && linalg_len(pts[0] - pts[len(pts) - 1]) <= eps {pop(&pts)}
-	n := len(pts)
-	if n == 0 {return}
-	if n == 1 { 	// a dot ("M12 17h0")
-		p := pts[0]
-		switch st.cap {
-		case .Round:
-			circle(shape, p, hw, tol)
-		case .Square:
-			add_ccw(shape, p + {-hw, -hw}, p + {hw, -hw}, p + {hw, hw}, p + {-hw, hw})
-		case .Butt:
-		}
-		return
-	}
-	is_closed := closed && n > 2
-	perp :: proc(d: [2]f32) -> [2]f32 {return {-d.y, d.x}}
-	dir :: proc(a, b: [2]f32) -> [2]f32 {return (b - a) / linalg_len(b - a)}
-
-	segments := is_closed ? n : n - 1
-	for i in 0 ..< segments {
-		a, b := pts[i], pts[(i + 1) % n]
-		d := dir(a, b)
-		nrm := perp(d) * hw
-		if !is_closed && st.cap == .Square {
-			if i == 0 {a -= d * hw}
-			if i == segments - 1 {b += d * hw}
-		}
-		add_ccw(shape, a + nrm, b + nrm, b - nrm, a - nrm)
-	}
-
-	for i in 0 ..< n {
-		if !is_closed && (i == 0 || i == n - 1) {continue}
-		v := pts[i]
-		d1, d2 := dir(pts[(i + n - 1) % n], v), dir(v, pts[(i + 1) % n])
-		cross := d1.x * d2.y - d1.y * d2.x
-		dot := d1.x * d2.x + d1.y * d2.y
-		if abs(cross) < 1e-6 && dot > 0 {continue} // straight on
-		if st.join == .Round {
-			circle(shape, v, hw, tol)
-			continue
-		}
-		side: f32 = cross > 0 ? -1 : 1 // the outer side of the turn
-		n1, n2 := perp(d1) * hw * side, perp(d2) * hw * side
-		add_ccw(shape, v, v + n1, v + n2) // bevel
-		if st.join == .Miter && 1 + dot > 1e-6 && math.sqrt(2 / (1 + dot)) <= st.miter_limit {
-			add_ccw(shape, v, v + n1, v + (n1 + n2) / (1 + dot), v + n2)
-		}
-	}
-
-	if !is_closed && st.cap == .Round {
-		circle(shape, pts[0], hw, tol)
-		circle(shape, pts[n - 1], hw, tol)
-	}
+	if len(b.points) == start {append(&b.points, mat_apply(b.m, cur))}
 }
 
 // ---------------------------------------------------------------------------
 // Rasterizing
 // ---------------------------------------------------------------------------
-
-// Vertical samples per pixel row; horizontal coverage is computed exactly.
-@(private = "file")
-SUBSAMPLES :: 8
 
 // Draws the SVG into `width` x `height` RGBA pixels (centered, aspect kept). Monochrome SVGs come
 // out white, to be tinted.
@@ -993,15 +716,18 @@ svg_rasterize :: proc(svg: ^Svg, width, height: int, allocator := context.alloca
 	acc := make([][4]f32, w * h, context.temp_allocator) // premultiplied
 	cov := make([]f32, w * h, context.temp_allocator)
 	for &shape in svg.shapes {
-		slice.zero(cov)
-		coverage(&shape, s, offset, cov, w, h)
+		x0, y0, x1, y1 := raster_coverage(&shape.polys, shape.even_odd, s, offset, cov, w, h)
 		c := shape.color
 		if svg.mono || shape.current {c.rgb = {255, 255, 255}}
 		src := [4]f32{c.r / 255, c.g / 255, c.b / 255, 1}
 		alpha := c.a / 255
-		for &p, i in acc {
-			a := min(cov[i], 1) * alpha
-			if a > 0 {p = src * a + p * (1 - a)}
+		for y in y0 ..< y1 {
+			for x in x0 ..< x1 {
+				i := y * w + x
+				a := min(cov[i], 1) * alpha
+				cov[i] = 0
+				if a > 0 {acc[i] = src * a + acc[i] * (1 - a)}
+			}
 		}
 	}
 
@@ -1016,77 +742,4 @@ svg_rasterize :: proc(svg: ^Svg, width, height: int, allocator := context.alloca
 		}
 	}
 	return out
-}
-
-@(private = "file")
-Edge :: struct {
-	x0, y0, x1, y1: f32, // y0 < y1
-	dir:            int,
-}
-
-@(private = "file")
-Crossing :: struct {
-	x:   f32,
-	dir: int,
-}
-
-// Adds the coverage (0..1 per pixel) of a shape's polygons, scaled by `s` and moved by `offset`.
-@(private = "file")
-coverage :: proc(shape: ^SvgShape, s: f32, offset: [2]f32, cov: []f32, w, h: int) {
-	edges := make([dynamic]Edge, context.temp_allocator)
-	ymin, ymax := max(f32), min(f32)
-	start := 0
-	for end in shape.ends {
-		for k in start ..< end {
-			p := shape.points[k] * s + offset
-			q := shape.points[k + 1 < end ? k + 1 : start] * s + offset
-			if p.y == q.y {continue}
-			if p.y < q.y {
-				append(&edges, Edge{p.x, p.y, q.x, q.y, 1})
-			} else {
-				append(&edges, Edge{q.x, q.y, p.x, p.y, -1})
-			}
-			ymin, ymax = min(ymin, p.y, q.y), max(ymax, p.y, q.y)
-		}
-		start = end
-	}
-	if len(edges) == 0 {return}
-
-	xs := make([dynamic]Crossing, context.temp_allocator)
-	weight := f32(1) / SUBSAMPLES
-	for y in max(0, int(math.floor(ymin))) ..< min(h, int(math.ceil(ymax))) {
-		row := cov[y * w:(y + 1) * w]
-		for sub in 0 ..< SUBSAMPLES {
-			sy := f32(y) + (f32(sub) + 0.5) / SUBSAMPLES
-			clear(&xs)
-			for e in edges {
-				if sy >= e.y0 && sy < e.y1 {
-					append(&xs, Crossing{e.x0 + (sy - e.y0) * (e.x1 - e.x0) / (e.y1 - e.y0), e.dir})
-				}
-			}
-			slice.sort_by(xs[:], proc(a, b: Crossing) -> bool {return a.x < b.x})
-			winding := 0
-			for k in 0 ..< len(xs) - 1 {
-				winding += xs[k].dir
-				inside := shape.even_odd ? winding % 2 != 0 : winding != 0
-				if inside {add_span(row, xs[k].x, xs[k + 1].x, weight)}
-			}
-		}
-	}
-}
-
-// Adds `weight` times the covered part of each pixel between x0 and x1.
-@(private = "file")
-add_span :: proc(row: []f32, x0, x1, weight: f32) {
-	w := f32(len(row))
-	a, b := clamp(x0, 0, w), clamp(x1, 0, w)
-	if b <= a {return}
-	ia, ib := int(a), int(b)
-	if ia == ib {
-		row[ia] += (b - a) * weight
-		return
-	}
-	row[ia] += (f32(ia + 1) - a) * weight
-	for i in ia + 1 ..< ib {row[i] += weight}
-	if ib < len(row) {row[ib] += (b - f32(ib)) * weight}
 }

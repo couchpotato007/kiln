@@ -159,6 +159,7 @@ Input :: struct {
 	time:                    f64,
 	window:                  [2]f32, // pixels
 	dpi:                     f32,
+	events:                  []Pointer_Event, // window coordinates; nil = made from the fields above
 }
 
 @(private)
@@ -234,7 +235,7 @@ app_update :: proc(a: App($Model, $Msg), model: ^Model, msgs: [dynamic]Msg) {
 
 @(private)
 frame_begin :: proc(input: Input, cfg: Config) {
-	g_pointer_delta = g_frame > 0 ? input.mouse - g_in.mouse : {}
+	g_events = input.events != nil ? input.events : events_from_input(g_in, input)
 	g_in = input
 	g_frame += 1
 

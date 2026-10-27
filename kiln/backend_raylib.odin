@@ -32,35 +32,38 @@ when !KILN_SNAPSHOT {
 			rl.BeginDrawing()
 			rl.ClearBackground(rl_color(g_theme.window))
 			rl_draw(&commands)
+			if g_frame % 256 == 0 {rl_layers_collect()}
 			rl.EndDrawing()
 
 			app_update(a, &model, msgs)
 		}
 	}
 
+	// An image: its texture (first, so a handle is also a ^rl.Texture2D) and its pixels, which
+	// drawings sample.
+	@(private)
+	Rl_Image :: struct {
+		tex:    rl.Texture2D,
+		pixels: []Pixel,
+	}
+
 	// Creates an image from RGBA pixels (row by row, top to bottom).
 	create_image :: proc(width, height: int, pixels: []Pixel) -> Image {
-		img := rl.Image {
-			data    = raw_data(pixels),
-			width   = i32(width),
-			height  = i32(height),
-			mipmaps = 1,
-			format  = .UNCOMPRESSED_R8G8B8A8,
-		}
-		tex := new(rl.Texture2D)
-		tex^ = rl.LoadTextureFromImage(img)
-		rl.SetTextureFilter(tex^, .BILINEAR)
-		return {tex, width, height}
+		img := new(Rl_Image)
+		img.pixels = make([]Pixel, width * height)
+		copy(img.pixels, pixels)
+		img.tex = rl.LoadTextureFromImage(
+			{data = raw_data(img.pixels), width = i32(width), height = i32(height), mipmaps = 1, format = .UNCOMPRESSED_R8G8B8A8},
+		)
+		rl.SetTextureFilter(img.tex, .BILINEAR)
+		return {img, width, height}
 	}
 
 	// Loads an image file (PNG, JPG, ...).
 	load_image :: proc(path: string) -> (Image, bool) {
-		t := rl.LoadTexture(strings.clone_to_cstring(path, context.temp_allocator))
-		if t.id == 0 {return {}, false}
-		rl.SetTextureFilter(t, .BILINEAR)
-		tex := new(rl.Texture2D)
-		tex^ = t
-		return {tex, int(t.width), int(t.height)}, true
+		w, h, pixels, ok := backend_load_pixels(path)
+		if !ok {return {}, false}
+		return create_image(w, h, pixels), true
 	}
 
 	// The RGBA pixels of an image file, in the temp allocator.
@@ -76,11 +79,18 @@ when !KILN_SNAPSHOT {
 		return width, height, pixels, true
 	}
 
+	@(private)
+	backend_image_pixels :: proc(handle: rawptr) -> (width, height: int, pixels: []Pixel) {
+		img := (^Rl_Image)(handle)
+		return int(img.tex.width), int(img.tex.height), img.pixels
+	}
+
 	destroy_image :: proc(img: ^Image) {
 		if img.handle == nil {return}
-		tex := (^rl.Texture2D)(img.handle)
-		rl.UnloadTexture(tex^)
-		free(tex)
+		r := (^Rl_Image)(img.handle)
+		rl.UnloadTexture(r.tex)
+		delete(r.pixels)
+		free(r)
 		img^ = {}
 	}
 
@@ -333,9 +343,9 @@ when !KILN_SNAPSHOT {
 	rl_draw :: proc(commands: ^clay.ClayArray(clay.RenderCommand)) {
 		tints := make([dynamic]Color, context.temp_allocator)
 		scissors := make([dynamic]rl.Rectangle, context.temp_allocator)
-		// Clay emits the background of a painted element after its custom command, which would
-		// cover the shapes: the background is drawn with the custom command and this one skipped.
-		painted: u32
+		// Clay emits the background of a drawn element after its custom command, which would
+		// cover the drawing: the background is drawn with the custom command and this one skipped.
+		drawn: u32
 
 		for i in 0 ..< commands.length {
 			cmd := clay.RenderCommandArray_Get(commands, i)
@@ -345,17 +355,13 @@ when !KILN_SNAPSHOT {
 			case .None:
 			case .Custom:
 				d := cmd.renderData.custom
-				painted = cmd.id
+				drawn = cmd.id
 				if d.backgroundColor.a > 0 {rl_rect_rounded(b, d.cornerRadius, rl_color(d.backgroundColor))}
-				if p := (^Painter)(d.customData); p != nil && len(p.shapes) > 0 {
-					r := rl.Rectangle{b.x, b.y, b.width, b.height}
-					if len(scissors) > 0 {r = rl_intersect(r, scissors[len(scissors) - 1])}
-					rl_scissor(r)
-					rl_paint(p, {b.x, b.y})
-					if len(scissors) > 0 {
-						rl_scissor(scissors[len(scissors) - 1])
+				if dr := (^Drawing)(d.customData); dr != nil && len(dr.ops) > 0 {
+					if img, r, ok := draw_single_image(dr); ok {
+						rl_image(img.handle, {b.x + r[0], b.y + r[1], r[2], r[3]}, img.tint)
 					} else {
-						rl.EndScissorMode()
+						rl_drawing(cmd.id, dr, b)
 					}
 				}
 			case .Text:
@@ -387,7 +393,7 @@ when !KILN_SNAPSHOT {
 					rl.EndScissorMode()
 				}
 			case .Rectangle:
-				if cmd.id == painted {continue}
+				if cmd.id == drawn {continue}
 				d := cmd.renderData.rectangle
 				rl_rect_rounded(b, d.cornerRadius, rl_color(d.backgroundColor))
 			case .Border:
@@ -400,28 +406,52 @@ when !KILN_SNAPSHOT {
 		}
 	}
 
-	// The shapes of a painter, relative to `origin`. Lines are segments with a dot on every
-	// point, which gives round joins and caps (translucent lines get darker where they overlap).
+	// The pixels of a drawing per element, kept in a texture while the drawing does not change.
 	@(private)
-	rl_paint :: proc(p: ^Painter, origin: [2]f32) {
-		for shape in p.shapes {
-			switch s in shape {
-			case Shape_Line:
-				col := rl_color(s.color)
-				for q, i in s.points {
-					rl.DrawCircleV(origin + q, s.width / 2, col)
-					if i > 0 {rl.DrawLineEx(origin + s.points[i - 1], origin + q, s.width, col)}
-				}
-			case Shape_Circle:
-				if s.width <= 0 {
-					rl.DrawCircleV(origin + s.center, s.radius, rl_color(s.color))
-				} else {
-					inner := max(0, s.radius - s.width / 2)
-					rl.DrawRing(origin + s.center, inner, s.radius + s.width / 2, 0, 360, 48, rl_color(s.color))
-				}
-			case Shape_Image:
-				pos := origin + s.pos
-				rl_image(s.handle, {pos.x, pos.y, s.size.x, s.size.y}, s.tint)
+	Rl_Layer :: struct {
+		tex:   rl.Texture2D,
+		size:  [2]int,
+		key:   u64, // what the texture shows: the drawing's hash and its offset in the pixel grid
+		frame: u64, // last frame the layer was drawn
+	}
+
+	@(private)
+	rl_layers: map[u32]Rl_Layer
+
+	@(private)
+	rl_drawing :: proc(id: u32, d: ^Drawing, b: clay.BoundingBox) {
+		x0, y0 := math.floor(b.x), math.floor(b.y)
+		w, h := int(math.ceil(b.x + b.width) - x0), int(math.ceil(b.y + b.height) - y0)
+		if w <= 0 || h <= 0 {return}
+		offset := [2]f32{b.x - x0, b.y - y0}
+		key := draw_hash(d) ~ (u64(transmute(u32)offset.x) << 32 | u64(transmute(u32)offset.y))
+
+		layer, found := &rl_layers[id]
+		if !found {layer = map_insert(&rl_layers, id, Rl_Layer{})}
+		if layer.size != {w, h} || layer.key != key {
+			pixels := draw_rasterize(d, w, h, offset, context.temp_allocator)
+			if layer.size == {w, h} {
+				rl.UpdateTexture(layer.tex, raw_data(pixels))
+			} else {
+				if layer.tex.id != 0 {rl.UnloadTexture(layer.tex)}
+				layer.tex = rl.LoadTextureFromImage(
+					{data = raw_data(pixels), width = i32(w), height = i32(h), mipmaps = 1, format = .UNCOMPRESSED_R8G8B8A8},
+				)
+				layer.size = {w, h}
+			}
+			layer.key = key
+		}
+		layer.frame = g_frame
+		rl.DrawTexture(layer.tex, i32(x0), i32(y0), rl.WHITE)
+	}
+
+	// Frees the textures of drawings that were not shown for a while.
+	@(private)
+	rl_layers_collect :: proc() {
+		for id, l in rl_layers {
+			if l.frame + STALE_FRAMES < g_frame {
+				rl.UnloadTexture(l.tex)
+				delete_key(&rl_layers, id)
 			}
 		}
 	}

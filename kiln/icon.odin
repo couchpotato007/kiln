@@ -147,10 +147,10 @@ icon_element :: proc(ic: Icon, style: TextStyle, color: Color) {
 	switch {
 	case len(ic.svg) > 0:
 		img, mono := icon_svg_image(ic.svg, int(d))
-		image_element(img.handle, {d, d}, color, mono)
+		image_element(img, {d, d}, color, mono)
 	case ic.image.handle != nil && ic.image.height > 0:
 		w := math.round(d * f32(ic.image.width) / f32(ic.image.height))
-		image_element(ic.image.handle, {w, d}, color, ic.tint)
+		image_element(ic.image, {w, d}, color, ic.tint)
 	case len(ic.glyph) > 0:
 		style_cfg := font(style, color)
 		style_cfg.wrapMode = .None
@@ -159,19 +159,19 @@ icon_element :: proc(ic: Icon, style: TextStyle, color: Color) {
 }
 
 // An image element of `size` pixels; `tinted` draws it multiplied by `tint`. Tinted images are
-// painted, since an image element's background color would also be drawn as a rectangle behind it.
+// drawings, since an image element's background color would also be drawn as a rectangle behind it.
 @(private)
-image_element :: proc(handle: rawptr, size: [2]f32, tint: Color, tinted: bool) {
-	if handle == nil {return}
+image_element :: proc(img: Image, size: [2]f32, tint: Color, tinted: bool) {
+	if img.handle == nil {return}
 	decl := clay.ElementDeclaration {
 		layout = {sizing = {clay.SizingFixed(size.x), clay.SizingFixed(size.y)}},
 	}
 	if tinted {
-		p := painter()
-		paint_image(p, {handle = handle}, {}, size, tint)
-		decl.custom = paint(p)
+		d := drawing()
+		draw_image(d, img, {}, size, tint)
+		decl.custom = draw(d)
 	} else {
-		decl.image = {imageData = handle}
+		decl.image = {imageData = img.handle}
 	}
 	if clay.UI()(decl) {}
 }

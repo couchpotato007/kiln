@@ -138,6 +138,12 @@ when KILN_SNAPSHOT {
 		return int(w), int(h), pixels, true
 	}
 
+	@(private)
+	backend_image_pixels :: proc(handle: rawptr) -> (width, height: int, pixels: []Pixel) {
+		img := (^SnapImage)(handle)
+		return img.width, img.height, img.pixels
+	}
+
 	destroy_image :: proc(img: ^Image) {
 		if img.handle == nil {return}
 		s := (^SnapImage)(img.handle)
@@ -266,9 +272,9 @@ when KILN_SNAPSHOT {
 		bg := g_theme.window
 		for &p in cv.px {p = bg.rgb}
 
-		// Clay emits the background of a painted element after its custom command, which would
-		// cover the shapes: the background is drawn with the custom command and this one skipped.
-		painted: u32
+		// Clay emits the background of a drawn element after its custom command, which would
+		// cover the drawing: the background is drawn with the custom command and this one skipped.
+		drawn: u32
 		for i in 0 ..< commands.length {
 			cmd := clay.RenderCommandArray_Get(commands, i)
 			b := cmd.boundingBox
@@ -276,11 +282,17 @@ when KILN_SNAPSHOT {
 			case .None, .OverlayColorStart, .OverlayColorEnd:
 			case .Custom:
 				d := cmd.renderData.custom
-				painted = cmd.id
+				drawn = cmd.id
 				snap_fill(&cv, b, d.cornerRadius, d.backgroundColor, 0)
-				if p := (^Painter)(d.customData); p != nil {snap_paint(&cv, p, b)}
+				if dr := (^Drawing)(d.customData); dr != nil && len(dr.ops) > 0 {
+					if img, r, ok := draw_single_image(dr); ok {
+						snap_image(&cv, (^SnapImage)(img.handle), {b.x + r[0], b.y + r[1], r[2], r[3]}, img.tint)
+					} else {
+						snap_drawing(&cv, dr, b)
+					}
+				}
 			case .Rectangle:
-				if cmd.id == painted {continue}
+				if cmd.id == drawn {continue}
 				d := cmd.renderData.rectangle
 				snap_fill(&cv, b, d.cornerRadius, d.backgroundColor, 0)
 			case .Border:
@@ -405,69 +417,20 @@ when KILN_SNAPSHOT {
 		}
 	}
 
-	// The shapes of a painter, cut off at the element's box `b`.
+	// A drawing, rendered for the element's box `b` and blended into the canvas.
 	@(private)
-	snap_paint :: proc(cv: ^Canvas, p: ^Painter, b: clay.BoundingBox) {
-		clip := [4]f32{b.x, b.y, b.x + b.width, b.y + b.height}
-		if len(cv.clips) > 0 {
-			t := cv.clips[len(cv.clips) - 1]
-			clip = {max(clip[0], t[0]), max(clip[1], t[1]), min(clip[2], t[2]), min(clip[3], t[3])}
-		}
-		append(&cv.clips, clip)
-		defer pop(&cv.clips)
-		origin := [2]f32{b.x, b.y}
-
-		for shape in p.shapes {
-			switch s in shape {
-			case Shape_Line:
-				// Coverage of the whole line first, so overlapping segments do not blend twice.
-				lo, hi := s.points[0], s.points[0]
-				for q in s.points {lo, hi = {min(lo.x, q.x), min(lo.y, q.y)}, {max(hi.x, q.x), max(hi.y, q.y)}}
-				pad := s.width / 2 + 1
-				x0, y0, x1, y1 := snap_span(cv, origin.x + lo.x - pad, origin.y + lo.y - pad, origin.x + hi.x + pad, origin.y + hi.y + pad)
-				if x1 <= x0 || y1 <= y0 {continue}
-				w := x1 - x0
-				cov := make([]f32, w * (y1 - y0), context.temp_allocator)
-				for q, i in s.points {
-					a, c := origin + q, origin + s.points[max(i - 1, 0)]
-					sx0, sy0, sx1, sy1 := snap_span(cv, min(a.x, c.x) - pad, min(a.y, c.y) - pad, max(a.x, c.x) + pad, max(a.y, c.y) + pad)
-					for y in sy0 ..< sy1 {
-						for x in sx0 ..< sx1 {
-							d := snap_segment_distance({f32(x) + 0.5, f32(y) + 0.5}, c, a)
-							k := (y - y0) * w + (x - x0)
-							cov[k] = max(cov[k], clamp(s.width / 2 + 0.5 - d, 0, 1))
-						}
-					}
-				}
-				for y in y0 ..< y1 {
-					for x in x0 ..< x1 {snap_blend(cv, x, y, s.color, cov[(y - y0) * w + (x - x0)])}
-				}
-			case Shape_Circle:
-				c := origin + s.center
-				r := s.radius + s.width / 2 + 1
-				x0, y0, x1, y1 := snap_span(cv, c.x - r, c.y - r, c.x + r, c.y + r)
-				for y in y0 ..< y1 {
-					for x in x0 ..< x1 {
-						d := math.sqrt((f32(x) + 0.5 - c.x) * (f32(x) + 0.5 - c.x) + (f32(y) + 0.5 - c.y) * (f32(y) + 0.5 - c.y))
-						cov := s.width <= 0 ? s.radius + 0.5 - d : s.width / 2 + 0.5 - abs(d - s.radius)
-						snap_blend(cv, x, y, s.color, clamp(cov, 0, 1))
-					}
-				}
-			case Shape_Image:
-				pos := origin + s.pos
-				snap_image(cv, (^SnapImage)(s.handle), {pos.x, pos.y, s.size.x, s.size.y}, s.tint)
+	snap_drawing :: proc(cv: ^Canvas, d: ^Drawing, b: clay.BoundingBox) {
+		x0, y0 := math.floor(b.x), math.floor(b.y)
+		w, h := int(math.ceil(b.x + b.width) - x0), int(math.ceil(b.y + b.height) - y0)
+		if w <= 0 || h <= 0 {return}
+		pixels := draw_rasterize(d, w, h, {b.x - x0, b.y - y0}, context.temp_allocator)
+		sx0, sy0, sx1, sy1 := snap_span(cv, x0, y0, x0 + f32(w), y0 + f32(h))
+		for y in sy0 ..< sy1 {
+			for x in sx0 ..< sx1 {
+				p := pixels[(y - int(y0)) * w + (x - int(x0))]
+				if p.a > 0 {snap_blend(cv, x, y, {f32(p.r), f32(p.g), f32(p.b), 255}, f32(p.a) / 255)}
 			}
 		}
-	}
-
-	// Distance from `q` to the segment from `a` to `b`.
-	@(private)
-	snap_segment_distance :: proc(q, a, b: [2]f32) -> f32 {
-		ab, aq := b - a, q - a
-		l := ab.x * ab.x + ab.y * ab.y
-		t := l > 0 ? clamp((aq.x * ab.x + aq.y * ab.y) / l, 0, 1) : 0
-		d := aq - ab * t
-		return math.sqrt(d.x * d.x + d.y * d.y)
 	}
 
 	// Draws an image scaled to the box. A tint (Clay's background color of the element)

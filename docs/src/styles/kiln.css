@@ -1,0 +1,53 @@
+/* Catppuccin, like the default kiln theme: Mocha in dark mode, Latte in light mode. */
+:root {
+  --sl-color-accent-low: #3b2f4f;
+  --sl-color-accent: #cba6f7;
+  --sl-color-accent-high: #f5e0ff;
+  --sl-color-white: #cdd6f4;
+  --sl-color-gray-1: #bac2de;
+  --sl-color-gray-2: #a6adc8;
+  --sl-color-gray-3: #7f849c;
+  --sl-color-gray-4: #585b70;
+  --sl-color-gray-5: #313244;
+  --sl-color-gray-6: #181825;
+  --sl-color-black: #1e1e2e;
+  --sl-font-mono: "Iosevka", "Iosevka Term", ui-monospace, "JetBrains Mono", monospace;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #e6d9fb;
+  --sl-color-accent: #8839ef;
+  --sl-color-accent-high: #4c1d95;
+  --sl-color-white: #1e1e2e;
+  --sl-color-gray-1: #4c4f69;
+  --sl-color-gray-2: #5c5f77;
+  --sl-color-gray-3: #8c8fa1;
+  --sl-color-gray-4: #acb0be;
+  --sl-color-gray-5: #ccd0da;
+  --sl-color-gray-6: #e6e9ef;
+  --sl-color-gray-7: #eff1f5;
+  --sl-color-black: #eff1f5;
+}
+
+/* The generated API pages have lots of tables; keep the type column from wrapping. */
+.sl-markdown-content table td:nth-child(2) code {
+  white-space: nowrap;
+}
+
+.screens {
+  display: grid;
+  grid-template-columns: 3fr 2fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.screens img {
+  border-radius: 0.5rem;
+  border: 1px solid var(--sl-color-gray-5);
+}
+
+@media (max-width: 50rem) {
+  .screens {
+    grid-template-columns: 1fr;
+  }
+}

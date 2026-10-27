@@ -1,0 +1,18 @@
+{
+  "name": "kiln-docs",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "api": "odin doc ../kiln -collection:lib=.. -doc-format -out:kiln.odin-doc && odin run ../tools/docgen -out:docgen.bin -- kiln.odin-doc src/content/docs/api",
+    "dev": "pnpm api && astro dev",
+    "build": "pnpm api && astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "^7.3.4",
+    "@astrojs/starlight": "0.42.7",
+    "astro": "7.4.2",
+    "sharp": "0.35.5"
+  }
+}

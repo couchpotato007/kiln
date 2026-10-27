@@ -1,0 +1,90 @@
+---
+title: kiln
+description: A small UI library for Odin, built with Clay and raylib. Vibecoded.
+template: splash
+hero:
+  tagline: A small ui framework library build with Clay and raylib. It is designed to be used by me.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Getting started
+      link: getting-started/
+      icon: right-arrow
+    - text: API
+      link: api/
+      icon: open-book
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+import { Image } from "astro:assets";
+import desktop from "../../assets/kiln-demo-desktop.png";
+import tablet from "../../assets/kiln-demo-tablet.png";
+import phone from "../../assets/kiln-demo-phone.png";
+
+:::caution
+This hole repo is vibecoded.
+The API is utterly garbage.
+:::
+
+## What is it
+
+It is a small ui framework library build with [clay](https://github.com/nicbarker/clay) and
+[raylib](https://github.com/raysan5/raylib), for [Odin](https://odin-lang.org).
+
+The whole library is one package: `kiln`. Apps import it once (no raylib, no clay) and write
+their UI as plain procs with `if` blocks:
+
+```odin
+import "lib:kiln"
+
+view :: proc(m: ^Model, out: ^[dynamic]Msg) {
+	if kiln.card("Profil") {
+		if t, ok := kiln.text_field(m.name, "Name"); ok {append(out, Set_Name{t})}
+		if kiln.submitted() {append(out, Save{})}
+
+		if v, ok := kiln.slider(m.volume, 0, 100); ok {append(out, Set_Volume{v})}
+
+		if kiln.actions() {
+			if kiln.button("Löschen", .Danger) {kiln.show("confirm")}
+			if kiln.button("Speichern") {append(out, Save{})}
+		}
+	}
+}
+```
+
+<div class="screens">
+  <Image src={desktop} alt="The kiln demo on a desktop window: sidebar, stat cards, a bar chart and a timeline" />
+  <Image src={tablet} alt="The same demo on a tablet: icon rail instead of the sidebar" />
+  <Image src={phone} alt="The same demo on a phone: top bar, everything stacked" />
+</div>
+
+This is the demo (`odin run example -collection:lib=.`) at desktop, tablet and phone size. The
+same code, the layout adapts by itself.
+
+## What you get
+
+<CardGrid>
+  <Card title="Controlled widgets" icon="pencil">
+    Widgets take the current value and return `(new_value, changed)`. The view never writes to the
+    model.
+  </Card>
+  <Card title="Elm style app loop" icon="random">
+    `init`, `update`, `view`. Messages go in, the model changes in one place.
+  </Card>
+  <Card title="Responsive" icon="laptop">
+    `grid`, `adaptive`, `field`, `actions`, `table` and `dialog` adapt to the space they get.
+  </Card>
+  <Card title="Snapshots" icon="seti:image">
+    Render the app headlessly into PNGs at phone, tablet and desktop size.
+  </Card>
+</CardGrid>
+
+## Where to go
+
+<CardGrid>
+  <LinkCard title="Getting started" href="getting-started/" description="Get a window with a button on screen." />
+  <LinkCard title="The rules" href="guides/rules/" description="The seven rules the whole API follows." />
+  <LinkCard title="API" href="api/" description="Every proc, its arguments, their types and defaults." />
+  <LinkCard title="Problems" href="problems/" description="There will be problems." />
+</CardGrid>

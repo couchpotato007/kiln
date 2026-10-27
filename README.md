@@ -187,6 +187,13 @@ popups). Tasks run synchronously in snapshots. The demo exposes two of them:
 
 Tests run headlessly: `odin test kiln -define:KILN_SNAPSHOT=true`.
 
+## Docs
+
+An Astro site with guides and API pages generated from the doc comments
+(`tools/docgen` reads the `.odin-doc` file of `odin doc`):
+
+    cd docs && pnpm install && pnpm dev
+
 # Problems
 
 There will be problems becaues the hole code was written with claude free

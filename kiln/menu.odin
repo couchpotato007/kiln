@@ -17,7 +17,7 @@ HoverStart :: struct {
 @(private)
 g_hover_start: map[u32]HoverStart
 
-@(private)
+// Where a tooltip appears: above the anchor (below if there is no room) or to its right.
 TooltipSide :: enum {
 	Top,
 	Right,
@@ -32,8 +32,9 @@ tooltip :: proc(label: string) {
 	tooltip_on(g_last.id, label, .Top)
 }
 
-@(private)
-tooltip_on :: proc(anchor: Id, label: string, side: TooltipSide) {
+// A tooltip for any element (parts of custom widgets, chart bars, ...), not only the last item.
+// Call it every frame after declaring the element.
+tooltip_on :: proc(anchor: Id, label: string, side := TooltipSide.Top) {
 	if anchor.id == 0 || len(label) == 0 {return}
 	if !clay.PointerOver(anchor) || g_active != 0 {
 		delete_key(&g_hover_start, anchor.id)

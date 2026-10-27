@@ -6,7 +6,9 @@ package components
 import "core:fmt"
 import "core:math"
 import "core:strings"
+import "core:time"
 import "lib:kiln"
+import clay "lib:kiln/clay-odin"
 
 ACTIONS := [?]kiln.MenuItem {
 	{label = "Öffnen"},
@@ -42,6 +44,14 @@ Model :: struct {
 	greeting:   string,
 	last_menu:  string,
 	favorites:  int,
+	password:   string,
+	date:       kiln.Date,
+	filter:     int,
+	tags:       [len(TAGS)]bool,
+	color:      int, // picked in the custom widget, -1 = none
+	loads:      int, // tasks started
+	loaded:     string, // what the last task returned
+	ticks:      int,
 }
 
 Set_Tab :: struct {
@@ -59,6 +69,28 @@ Menu_Picked :: struct {
 	index:  int,
 }
 Favorite :: struct {}
+Set_Password :: struct {
+	text: string,
+}
+Set_Date :: struct {
+	date: kiln.Date,
+}
+Set_Filter :: struct {
+	index: int,
+}
+Toggle_Tag :: struct {
+	index: int,
+}
+Pick_Color :: struct {
+	index: int,
+}
+Start_Load :: struct {}
+Tick :: struct {}
+
+// Sent by the background task, a variant of `Msg` (which is itself a variant of the app's message).
+Loaded :: struct {
+	number: int,
+}
 
 Msg :: union {
 	Set_Tab,
@@ -67,10 +99,18 @@ Msg :: union {
 	Greet,
 	Menu_Picked,
 	Favorite,
+	Set_Password,
+	Set_Date,
+	Set_Filter,
+	Toggle_Tag,
+	Pick_Color,
+	Start_Load,
+	Loaded,
+	Tick,
 }
 
 init :: proc() -> Model {
-	return {picture = make_picture(), progress = 0.4, favorites = 3}
+	return {picture = make_picture(), progress = 0.4, favorites = 3, date = {2026, 10, 26}, color = -1, tags = {true, false, true, false, false, false}}
 }
 
 // A procedural picture, so the example needs no image files.
@@ -111,6 +151,25 @@ update :: proc(m: ^Model, msg: Msg) {
 	case Menu_Picked:
 		delete(m.last_menu)
 		m.last_menu = fmt.aprintf("%s: %s", v.source, ACTIONS[v.index].label)
+	case Set_Password:
+		delete(m.password)
+		m.password = strings.clone(v.text)
+	case Set_Date:
+		m.date = v.date
+	case Set_Filter:
+		m.filter = v.index
+	case Toggle_Tag:
+		m.tags[v.index] = !m.tags[v.index]
+	case Pick_Color:
+		m.color = v.index
+	case Start_Load:
+		m.loads += 1
+		kiln.task(load, m.loads)
+	case Loaded:
+		delete(m.loaded)
+		m.loaded = fmt.aprintf("Ergebnis %d ist da", v.number)
+	case Tick:
+		m.ticks += 1
 	case Favorite:
 		m.favorites += 1
 	}
@@ -126,6 +185,15 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 		tabs(m, out)
 		menus(m, out)
 		overlays()
+		secrets_and_dates(m, out)
+		calendar(m, out)
+		chips(m, out)
+		callouts()
+		stats()
+		long_texts()
+		chart()
+		custom(m, out)
+		background(m, out)
 	}
 
 	if kiln.dialog("demo", "Ein Dialog") {
@@ -155,6 +223,10 @@ buttons :: proc(m: ^Model, out: ^[dynamic]Msg) {
 			kiln.button("Ghost", .Ghost)
 			kiln.button("Gefahr", .Danger)
 			kiln.button("Aus", disabled = true)
+		}
+		if kiln.row() {
+			kiln.button("Entfernen", .Ghost, tone = .Danger)
+			kiln.button("Prüfen", .Secondary, tone = .Success)
 		}
 		if kiln.row() {
 			kiln.button("☰", .Secondary)
@@ -210,6 +282,7 @@ feedback :: proc(m: ^Model, out: ^[dynamic]Msg) {
 		kiln.progress(m.progress)
 		kiln.progress(m.progress * 0.6, .Success)
 		kiln.progress(1 - m.progress, .Warning)
+		for i in 0 ..< 3 {kiln.progress(m.progress * f32(3 - i) / 3, color = kiln.chart_color(i + 4), thin = true)}
 		if kiln.row() {
 			if kiln.button("−", .Secondary) {append(out, Step_Progress{-0.1})}
 			if kiln.button("+", .Secondary) {append(out, Step_Progress{0.1})}
@@ -259,5 +332,162 @@ overlays :: proc() {
 			if kiln.button("Erfolg", .Ghost) {kiln.toast("Gespeichert", .Success)}
 			if kiln.button("Fehler", .Ghost) {kiln.toast("Das hat nicht geklappt", .Danger)}
 		}
+	}
+}
+
+FILTERS := [?]string{"Alle", "Offen", "Erledigt", "Archiv"}
+TAGS := [?]string{"Arbeit", "Privat", "Dringend", "Später", "Idee", "Einkauf"}
+
+secrets_and_dates :: proc(m: ^Model, out: ^[dynamic]Msg) {
+	if kiln.card("Passwort und Datum") {
+		short := len(m.password) > 0 && len(m.password) < 8
+		if kiln.field("Passwort", "Mindestens 8 Zeichen.", error = short ? "Noch zu kurz." : "") {
+			if t, ok := kiln.text_field(m.password, "Passwort", password = true); ok {append(out, Set_Password{t})}
+		}
+		if kiln.field("Fällig") {
+			if d, ok := kiln.date_field(m.date, min = {2026, 1, 1}, max = {2027, 12, 31}); ok {append(out, Set_Date{d})}
+		}
+		kiln.text(
+			fmt.tprintf("%s, Wochentag %d", kiln.date_format(m.date), kiln.date_weekday(m.date) + 1),
+			.Caption,
+			.Muted,
+		)
+	}
+}
+
+calendar :: proc(m: ^Model, out: ^[dynamic]Msg) {
+	if kiln.card("Kalender") {
+		if d, ok := kiln.calendar(m.date, min = {2026, 1, 1}); ok {append(out, Set_Date{d})}
+		kiln.text("Pfeiltasten, Bild auf / ab und Enter, solange der Zeiger darüber ist.", .Caption, .Faint)
+	}
+}
+
+chips :: proc(m: ^Model, out: ^[dynamic]Msg) {
+	if kiln.card("Chips und Flow") {
+		if i, ok := kiln.chips(m.filter, FILTERS[:]); ok {append(out, Set_Filter{i})}
+		kiln.separator()
+		if kiln.flow() {
+			for tag, i in TAGS {
+				if kiln.chip(tag, m.tags[i]) {append(out, Toggle_Tag{i})}
+			}
+		}
+		kiln.text("Zeilen brechen um, wenn die Karte schmal wird.", .Caption, .Faint)
+	}
+}
+
+callouts :: proc() {
+	if kiln.card("Hinweise") {
+		if kiln.callout(.Danger, "Konnte nicht laden") {
+			kiln.text("Der Server antwortet nicht.", .Body, .Muted)
+			if kiln.button("Nochmal", .Secondary) {kiln.toast("Wird erneut versucht ...")}
+		}
+		if kiln.callout(.Success) {
+			kiln.text("Verbunden mit wellbeing.local")
+		}
+		if kiln.empty_state("Noch nichts da", "Neue Einträge erscheinen hier.") {
+			kiln.button("Anlegen", .Secondary)
+		}
+	}
+}
+
+stats :: proc() {
+	if kiln.card("Kennzahlen") {
+		if kiln.grid(130) {
+			kiln.stat("Bildschirmzeit", "5h 8m", delta = "↓ 12 %", delta_tone = .Success, large = true)
+			kiln.stat("Entsperrungen", "84", note = "seit 7 Uhr", delta = "↑ 4", delta_tone = .Warning)
+		}
+	}
+}
+
+long_texts :: proc() {
+	if kiln.card("Lange Texte") {
+		titles := [?]string {
+			"kiln — ~/kodieren/odin/app/kiln/layout.odin — Visual Studio Code",
+			"Odin Programming Language: Overview of the core library and the vendor packages",
+			"Kurz",
+		}
+		for t in titles {
+			if kiln.list_item() {
+				kiln.text("□", .Body, .Muted)
+				kiln.text(t, ellipsis = true)
+			}
+		}
+		kiln.text("Abgeschnittene Titel zeigen den vollen Text als Tooltip.", .Caption, .Faint)
+	}
+}
+
+chart :: proc() {
+	if kiln.card("Diagramm mit Farben") {
+		values := [?]f32{42, 18, 31, 7, 25}
+		colors := make([]kiln.Color, len(values), context.temp_allocator)
+		items := make([]kiln.Legend_Item, len(values), context.temp_allocator)
+		for &c, i in colors {
+			c = kiln.chart_color(i)
+			items[i] = {TAGS[i], c}
+		}
+		minutes :: proc(v: f32) -> string {return fmt.tprintf("%.0f min", v)}
+		kiln.bar_chart(values[:], TAGS[:len(values)], height = 100, format = minutes, colors = colors)
+		kiln.legend(items)
+	}
+}
+
+// A widget that is not part of kiln, built from its public building blocks: a color square
+// that reacts to hover, has a tooltip and answers `kiln.clicked()`.
+swatch_button :: proc(color: kiln.Color, name: string, selected: bool) -> bool {
+	eid := kiln.id(name)
+	s := kiln.interact(eid)
+	h := kiln.anim(eid, 0, s.hovered ? 1 : 0)
+	d := kiln.size(.Control)
+	theme := kiln.theme()
+	kiln.flow_item(eid) // wrap like kiln's own widgets inside a `flow`
+	if clay.UI(eid)(
+	{
+		layout = {sizing = {clay.SizingFixed(d), clay.SizingFixed(d)}},
+		backgroundColor = kiln.mix(color, theme.text, 0.25 * h),
+		cornerRadius = kiln.corners(.MD),
+		border = selected ? kiln.outline(theme.text) : {},
+	},
+	) {}
+	kiln.tooltip_on(eid, name)
+	kiln.set_last(eid, s)
+	return s.clicked
+}
+
+custom :: proc(m: ^Model, out: ^[dynamic]Msg) {
+	NAMES := [8]string{"Blau", "Pfirsich", "Grün", "Gelb", "Rosa", "Türkis", "Lila", "Rot"}
+	if kiln.card("Eigenes Widget") {
+		if kiln.flow(.XS, .XS) {
+			for name, i in NAMES {
+				if swatch_button(kiln.chart_color(i), name, m.color == i) {append(out, Pick_Color{i})}
+			}
+		}
+		if m.color >= 0 {
+			if kiln.row(.XS) {
+				kiln.swatch(kiln.chart_color(m.color))
+				kiln.text(NAMES[m.color], .Caption, .Muted)
+			}
+		}
+		kiln.text("Gebaut aus id, interact, anim, tooltip_on und set_last.", .Caption, .Faint)
+	}
+}
+
+// Runs on a worker thread: no model, no UI state.
+load :: proc(number: int) -> Loaded {
+	time.sleep(time.Second)
+	return Loaded{number}
+}
+
+background :: proc(m: ^Model, out: ^[dynamic]Msg) {
+	if kiln.every("components-tick", 1) {append(out, Tick{})}
+	if kiln.card("Hintergrund") {
+		if kiln.row() {
+			if kiln.button("Laden (1 s)", .Secondary) {append(out, Start_Load{})}
+			if kiln.tasks_running() > 0 {
+				kiln.spinner()
+				kiln.text(fmt.tprintf("%d läuft", kiln.tasks_running()), .Caption, .Muted)
+			}
+		}
+		if len(m.loaded) > 0 {kiln.text(m.loaded, .Body, .Success)}
+		kiln.text(fmt.tprintf("Timer: %d s auf dieser Seite", m.ticks), .Caption, .Faint)
 	}
 }

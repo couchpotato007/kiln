@@ -32,13 +32,14 @@ from_enum :: proc(e: $E) -> int {
 // ---------------------------------------------------------------------------
 
 // A pill-shaped row of joined options for switching between a few modes.
-// `fill` stretches it (and its segments, equally) to the width of the container.
+// `fill` stretches it (and its segments, equally) to the width of the container. Options can be
+// disabled one by one with `disabled[i]` (for enums in the order of the enum values).
 segmented :: proc {
 	segmented_index,
 	segmented_enum,
 }
 
-segmented_index :: proc(selected: int, labels: []string, fill := false) -> (int, bool) {
+segmented_index :: proc(selected: int, labels: []string, fill := false, disabled: []bool = nil) -> (int, bool) {
 	c := &g_theme
 	eid := id("segmented")
 	result, changed := selected, false
@@ -57,7 +58,8 @@ segmented_index :: proc(selected: int, labels: []string, fill := false) -> (int,
 	) {
 		for label, i in labels {
 			sid := sub_id(eid, "segment", i)
-			s := interact(sid)
+			off := i < len(disabled) && disabled[i]
+			s := interact(sid, off)
 			if s.clicked && selected != i {
 				result, changed = i, true
 			}
@@ -66,6 +68,7 @@ segmented_index :: proc(selected: int, labels: []string, fill := false) -> (int,
 
 			bg := mix(fade(c.surface_hover, 0), c.surface_hover, h)
 			fg := mix(c.text_muted, c.text, h)
+			if off {fg = c.text_faint}
 			bg = mix(bg, c.primary, on)
 			fg = mix(fg, c.on_primary, on)
 			style := font(.Body, fg)
@@ -94,12 +97,13 @@ segmented_enum :: proc(
 	selected: $E,
 	labels: [E]string,
 	fill := false,
+	disabled: []bool = nil,
 ) -> (
 	E,
 	bool,
 ) where intrinsics.type_is_enum(E) {
 	l := labels
-	i, ok := segmented_index(from_enum(selected), enum_labels(&l), fill)
+	i, ok := segmented_index(from_enum(selected), enum_labels(&l), fill, disabled)
 	return to_enum(E, i), ok
 }
 
@@ -263,12 +267,13 @@ select_index :: proc(
 	options: []string,
 	placeholder := "",
 	disabled := false,
+	key := "",
 ) -> (
 	int,
 	bool,
 ) {
 	c := &g_theme
-	eid := id("select")
+	eid := id(len(key) > 0 ? key : "select")
 	list := sub_id(eid, "list")
 	result, changed := selected, false
 
@@ -294,7 +299,7 @@ select_index :: proc(
 		},
 		backgroundColor = c.sunken,
 		cornerRadius = corners(.MD),
-		border = outline(mix(c.border, c.primary, h)),
+		border = outline(field_error() ? c.danger : mix(c.border, c.primary, h)),
 		clip = {horizontal = true},
 	},
 	) {
@@ -318,12 +323,13 @@ select_enum :: proc(
 	options: [E]string,
 	placeholder := "",
 	disabled := false,
+	key := "",
 ) -> (
 	E,
 	bool,
 ) where intrinsics.type_is_enum(E) {
 	l := options
-	i, ok := select_index(from_enum(selected), enum_labels(&l), placeholder, disabled)
+	i, ok := select_index(from_enum(selected), enum_labels(&l), placeholder, disabled, key)
 	return to_enum(E, i), ok
 }
 

@@ -5,6 +5,9 @@ package kiln
 // The text belongs to the model; the field keeps its editing state (buffer, cursor, selection,
 // scroll) internally. When the model's text changes from outside (e.g. cleared after a submit),
 // the field adopts it. Tab / Shift+Tab move the focus between fields.
+//
+// Password fields show one `•` per character. The buffer always holds the real text; cursor and
+// selection are byte offsets into it and are converted wherever the shown text is measured.
 
 import "core:math"
 import "core:strings"
@@ -18,6 +21,7 @@ Edit :: struct {
 	scroll:         f32,
 	blink:          f32,
 	dragging:       bool,
+	revealed:       bool, // password fields: the text is shown instead of dots
 	frame:          u64,
 }
 
@@ -28,21 +32,30 @@ g_focus: u32 // the text field that receives keyboard input
 @(private)
 g_focus_order: [dynamic]u32 // enabled text fields in declaration order (this frame)
 
+@(private)
+MASK :: "•"
+
 // A text field. Returns the edited text and whether it changed in this frame; ask
 // `kiln.submitted()` afterwards for Enter. The returned string lives until the end of the frame:
 //
 //   if t, ok := kiln.text_field(m.draft, "Neue Aufgabe..."); ok {append(out, Set_Draft{t})}
 //   if kiln.submitted() {append(out, Add{})}
+//
+// `password` masks the text and adds a button that reveals it; copying is disabled while masked.
+// The field is identified by its placeholder; give two fields with the same placeholder a
+// distinct `key`.
 text_field :: proc(
 	value: string,
 	placeholder := "",
 	disabled := false,
+	password := false,
+	key := "",
 ) -> (
 	text: string,
 	changed: bool,
 ) {
 	c := &g_theme
-	eid := id(len(placeholder) > 0 ? placeholder : "text_field")
+	eid := id(len(key) > 0 ? key : len(placeholder) > 0 ? placeholder : "text_field")
 	e := edit_state(eid)
 
 	if string(e.buf[:]) != value {
@@ -60,9 +73,13 @@ text_field :: proc(
 		append(&g_focus_order, eid.id)
 	}
 
+	masked := password && !e.revealed
 	style := font(.Body, disabled ? c.text_faint : c.text)
 	style.wrapMode = .None
 	pad := inset(.MD, .None)
+	eye_inset := line_width() + f32(space(.XS))
+	eye_size := size(.Control) - 2 * eye_inset
+	if password {pad.right = u16(eye_size + eye_inset + f32(space(.XS)))} // room for the reveal button
 	data := clay.GetElementData(eid)
 	local_x := g_in.mouse.x - data.boundingBox.x - f32(pad.left) + e.scroll
 
@@ -70,11 +87,11 @@ text_field :: proc(
 	if g_active == eid.id && .Left in g_in.pressed {
 		g_focus = eid.id
 		e.dragging = true
-		move_cursor(e, index_at(string(e.buf[:]), local_x), g_in.shift)
+		move_cursor(e, hit_offset(e, local_x, masked), g_in.shift)
 	}
 	if e.dragging {
 		if .Left in g_in.down {
-			e.cursor = index_at(string(e.buf[:]), local_x)
+			e.cursor = hit_offset(e, local_x, masked)
 			e.blink = 0
 		} else {
 			e.dragging = false
@@ -83,23 +100,28 @@ text_field :: proc(
 
 	focused := g_focus == eid.id
 	submit := false
-	if focused {changed, submit = edit_keys(e)}
+	if focused {changed, submit = edit_keys(e, masked)}
 	changed = changed && string(e.buf[:]) != value
 	e.blink += g_in.dt
 
 	// Keep the cursor visible.
 	str := string(e.buf[:])
-	cursor_x := measure(str[:e.cursor], .Body)
+	shown := shown_text(str, masked)
+	cursor_x := measure(shown[:shown_offset(str, e.cursor, masked)], .Body)
 	if data.found {
 		inner := data.boundingBox.width - f32(pad.left) - f32(pad.right)
 		if cursor_x - e.scroll > inner - 2 {e.scroll = cursor_x - inner + 2}
 		if cursor_x - e.scroll < 0 {e.scroll = cursor_x}
-		e.scroll = clamp(e.scroll, 0, max(0, measure(str, .Body) - inner + 2))
+		e.scroll = clamp(e.scroll, 0, max(0, measure(shown, .Body) - inner + 2))
 	}
 
 	line_h := f32(style.fontSize)
 	y := f32(0)
 	if data.found {y = (data.boundingBox.height - line_h) / 2}
+
+	border := mix(c.border, c.border_strong, anim(eid, 0, s.hovered ? 1 : 0))
+	if focused {border = c.primary}
+	if field_error() {border = c.danger}
 
 	if clay.UI(eid)(
 	{
@@ -110,12 +132,12 @@ text_field :: proc(
 		},
 		backgroundColor = c.sunken,
 		cornerRadius = corners(.MD),
-		border = outline(focused ? c.primary : mix(c.border, c.border_strong, anim(eid, 0, s.hovered ? 1 : 0))),
+		border = outline(border),
 		clip = {horizontal = true, childOffset = {-e.scroll, 0}},
 	},
 	) {
-		if len(str) > 0 {
-			clay.TextDynamic(str, style)
+		if len(shown) > 0 {
+			clay.TextDynamic(shown, style)
 		} else if len(placeholder) > 0 {
 			ph := font(.Body, c.text_faint)
 			ph.wrapMode = .None
@@ -124,16 +146,75 @@ text_field :: proc(
 
 		if focused && e.cursor != e.anchor {
 			lo, hi := selection(e)
-			x0, x1 := measure(str[:lo], .Body), measure(str[:hi], .Body)
+			x0 := measure(shown[:shown_offset(str, lo, masked)], .Body)
+			x1 := measure(shown[:shown_offset(str, hi, masked)], .Body)
 			mark_in_field(c.selection, f32(pad.left) + x0 - e.scroll, y, x1 - x0, line_h)
 		}
 		if focused && math.mod(e.blink, 1.06) < 0.53 {
 			mark_in_field(c.primary, f32(pad.left) + cursor_x - e.scroll, y, line_width() * 2, line_h)
 		}
+
+		// The reveal button floats over the right end, so it does not scroll with the text. It is
+		// inset by `eye_inset`, so its hover background stays inside the field's border.
+		if password {
+			bid := sub_id(eid, "reveal")
+			bs := interact(bid, disabled)
+			if bs.clicked {e.revealed = !e.revealed}
+			bh := anim(bid, 0, bs.hovered ? 1 : 0)
+			bg := mix(fade(c.surface_hover, 0), c.surface_hover, bh)
+			if bs.pressed {bg = c.surface_active}
+			if clay.UI(bid)(
+			{
+				layout = {
+					sizing = {clay.SizingFixed(eye_size), clay.SizingFixed(eye_size)},
+					childAlignment = {.Center, .Center},
+				},
+				backgroundColor = bg,
+				cornerRadius = corners(.SM),
+				floating = {
+					attachTo = .Parent,
+					attachment = {element = .RightCenter, parent = .RightCenter},
+					offset = {-eye_inset, 0},
+					zIndex = g_z + 1,
+				},
+			},
+			) {
+				clay.TextDynamic(e.revealed ? "○" : "◉", font(.Body, disabled ? c.text_faint : c.text_muted))
+			}
+		}
 	}
 
 	set_last(eid, s, submit)
 	return strings.clone(str, context.temp_allocator), changed
+}
+
+// The text as drawn: the buffer, or one mask glyph per rune.
+@(private)
+shown_text :: proc(buf: string, masked: bool) -> string {
+	if !masked {return buf}
+	return strings.repeat(MASK, utf8.rune_count_in_string(buf), context.temp_allocator)
+}
+
+// Byte offset in the shown text for a byte offset in the buffer.
+@(private)
+shown_offset :: proc(buf: string, off: int, masked: bool) -> int {
+	if !masked {return off}
+	return utf8.rune_count_in_string(buf[:off]) * len(MASK)
+}
+
+// Byte offset in the buffer for the position under `x` (pixels from the start of the text).
+@(private)
+hit_offset :: proc(e: ^Edit, x: f32, masked: bool) -> int {
+	buf := string(e.buf[:])
+	at := index_at(shown_text(buf, masked), x)
+	if !masked {return at}
+	i := 0
+	for _ in 0 ..< at / len(MASK) {
+		if i >= len(buf) {break}
+		_, n := utf8.decode_rune_in_string(buf[i:])
+		i += n
+	}
+	return i
 }
 
 @(private)
@@ -247,7 +328,7 @@ insert :: proc(e: ^Edit, s: string) {
 }
 
 @(private)
-edit_keys :: proc(e: ^Edit) -> (changed, submitted: bool) {
+edit_keys :: proc(e: ^Edit, masked := false) -> (changed, submitted: bool) {
 	keys := g_in.keys
 	shift, ctrl := g_in.shift, g_in.ctrl
 	e.cursor = clamp(e.cursor, 0, len(e.buf))
@@ -295,7 +376,7 @@ edit_keys :: proc(e: ^Edit) -> (changed, submitted: bool) {
 		if .A in keys {
 			e.anchor, e.cursor = 0, len(e.buf)
 		}
-		if (.C in keys || .X in keys) && e.cursor != e.anchor {
+		if (.C in keys || .X in keys) && e.cursor != e.anchor && !masked { // no copying out of a password
 			lo, hi := selection(e)
 			backend_set_clipboard(string(e.buf[lo:hi]))
 			if .X in keys {

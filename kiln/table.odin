@@ -40,7 +40,7 @@ table :: proc(selected: int, columns: []Column, rows: [][]string) -> (int, bool)
 	if !has_sort {sort.column = -1}
 
 	// Column widths from the width of the previous frame; hide columns until the rest fits.
-	inner := last_width(eid) - 2 * line_width()
+	inner := element_width(eid) - 2 * line_width()
 	need := make([]f32, len(columns), context.temp_allocator)
 	visible := make([]bool, len(columns), context.temp_allocator)
 	total: f32 = 0

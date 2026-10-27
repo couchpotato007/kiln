@@ -52,6 +52,13 @@ package kiln
 //          if kiln.scope(item.id) { ... }
 //      }
 //
+//    Text fields take their id from the placeholder, so two fields with the same placeholder
+//    would share cursor and focus. `text_field`, `select`, `date_field` and `slider` take an
+//    explicit `key` for that case:
+//
+//      kiln.text_field(m.from, "Stadt", key = "from")
+//      kiln.text_field(m.to, "Stadt", key = "to")
+//
 // 6. Values come from the theme
 //
 //    Spacing, radii, sizes, fonts and colors are named steps (`.SM`, `.Raised`, `.Muted`, ...).
@@ -65,8 +72,39 @@ package kiln
 //    row and a column, `field` moves its label above the control, `actions` stacks its buttons
 //    and `table` hides low-priority columns.
 //
-// Building blocks for custom widgets (`id`, `interact`, `anim`, `px`, `space`, `font`, ...)
-// are public as well; combine them with Clay (`import clay "lib:kiln/clay-odin"`).
+// Custom widgets
+//
+//    Widgets are plain procs that declare Clay elements (`import clay "lib:kiln/clay-odin"`).
+//    These building blocks make them behave like kiln's own:
+//
+//      id, sub_id          stable ids (`id` counts equal labels; `sub_id` for parts of a widget)
+//      interact            hover / press / click of an element, call before declaring it
+//      set_last            makes `clicked`, `hovered`, `tooltip`, `context_menu` refer to it
+//      tooltip_on          a tooltip for any element, e.g. one bar of a chart
+//      anim                smooth values for hover fades and transitions
+//      element_width       width of an element in the previous frame (responsive layout)
+//      element_rect        position and size in the previous frame (placing floating children)
+//      rule                a line inside a custom layout
+//      flow_item           lets the widget wrap inside a `flow` (call before opening it)
+//      px, space, inset, radius, corners, size, outline, font, measure, tone_color, mix, fade
+//                          theme values in pixels and colors
+//
+//      swatch_button :: proc(color: kiln.Color, name: string) -> bool {
+//          eid := kiln.id(name)
+//          s := kiln.interact(eid)
+//          d := kiln.size(.Control)
+//          if clay.UI(eid)({
+//              layout = {sizing = {clay.SizingFixed(d), clay.SizingFixed(d)}},
+//              backgroundColor = kiln.mix(color, kiln.theme().text, 0.25 * kiln.anim(eid, 0, s.hovered ? 1 : 0)),
+//              cornerRadius = kiln.corners(.MD),
+//          }) {}
+//          kiln.tooltip_on(eid, name)
+//          kiln.set_last(eid, s)
+//          return s.clicked
+//      }
+//
+// Work that blocks (network, disk) goes to `task`, which runs it on a thread and delivers its
+// result as a message; `every` and `after` are timers for the view.
 //
 // Build with `-define:KILN_SNAPSHOT=true` to render the app headlessly into PNG files at phone,
 // tablet and desktop size instead of opening a window (see backend_snapshot.odin).

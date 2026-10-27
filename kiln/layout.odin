@@ -42,8 +42,10 @@ Align :: enum {
 BoxKind :: enum {
 	Plain,
 	Grid,
+	Flow,
 	Adaptive,
 	Actions,
+	Field,
 }
 
 @(private)
@@ -55,8 +57,12 @@ Box :: struct {
 	extra:      int, // inner elements that are closed together with the box
 	stacked:    bool, // Adaptive / Actions: children are stacked vertically and fill the width
 	columns:    int, // Grid
-	count:      int, // Grid: cells so far
-	gap:        u16, // Grid
+	count:      int, // Grid: cells so far; Flow: children so far
+	gap:        u16, // Grid, Flow
+	error:      bool, // Field: the controls inside get a danger border
+	line:       u32, // Flow: the element children go into (the current line)
+	line_x:     f32, // Flow: width taken in the current line
+	avail:      f32, // Flow: width of the flow in the previous frame
 }
 
 @(private)
@@ -107,9 +113,11 @@ open_box :: proc(
 			}
 			p.count += 1
 			d.layout.sizing = {clay.SizingPercent(1 / f32(p.columns)), clay.SizingGrow()}
+		case .Flow:
+			flow_item(eid)
 		case .Adaptive, .Actions:
 			if p.stacked {d.layout.sizing.width = clay.SizingGrow()}
-		case .Plain:
+		case .Plain, .Field:
 		}
 	}
 
@@ -137,6 +145,7 @@ close_box :: proc() {
 		if b.count > 0 {clay._CloseElement()} // last row
 		g_grid_cells[b.id.id] = b.count
 	}
+	if b.kind == .Flow && b.count > 0 {clay._CloseElement()} // last line
 	for _ in 0 ..< b.extra {clay._CloseElement()}
 	clay._CloseElement()
 	g_last = {id = b.id, state = b.state}
@@ -147,11 +156,19 @@ close_box_if :: proc(ok: bool) {
 	if ok {close_box()}
 }
 
-// Width of an element in the previous frame (the window width before it first appeared).
-@(private)
-last_width :: proc(eid: Id) -> f32 {
+// Width of an element in the previous frame in pixels (the window width before it first
+// appeared). Responsive widgets decide their layout from it.
+element_width :: proc(eid: Id) -> f32 {
 	d := clay.GetElementData(eid)
 	return d.found ? d.boundingBox.width : g_in.window.x
+}
+
+// Position and size of an element in the previous frame in pixels, e.g. for widgets that place
+// floating children themselves. `found` is false before the element was first laid out.
+element_rect :: proc(eid: Id) -> (x, y, w, h: f32, found: bool) {
+	d := clay.GetElementData(eid)
+	b := d.boundingBox
+	return b.x, b.y, b.width, b.height, d.found
 }
 
 @(private)
@@ -278,8 +295,8 @@ separator :: proc() {
 	rule(vertical = p != nil && p.horizontal)
 }
 
-// A line for widgets that build their insides with Clay directly (no box to ask).
-@(private)
+// A line in the border color for widgets that build their insides with Clay directly (there is
+// no box to ask for the direction, so it is given).
 rule :: proc(vertical := false) {
 	w := line_width()
 	sizing := clay.Sizing{clay.SizingGrow(), clay.SizingFixed(w)}
@@ -439,7 +456,7 @@ scroll_bar :: proc(outer, content: Id) {
 grid :: proc(min_width: f32, gap := Space.MD) -> bool {
 	eid := id("grid")
 	g := space(gap)
-	columns := max(1, int((last_width(eid) + f32(g)) / (px(min_width) + f32(g))))
+	columns := max(1, int((element_width(eid) + f32(g)) / (px(min_width) + f32(g))))
 	if n := g_grid_cells[eid.id]; n > 0 {
 		rows := (n + columns - 1) / columns
 		columns = (n + rows - 1) / rows
@@ -470,7 +487,7 @@ grid :: proc(min_width: f32, gap := Space.MD) -> bool {
 @(deferred_none = close_box)
 adaptive :: proc(min_width: f32, gap := Space.MD, fill := Fill.Width) -> bool {
 	eid := id("adaptive")
-	stacked := last_width(eid) < px(min_width)
+	stacked := element_width(eid) < px(min_width)
 	b := open_box(
 		eid,
 		{
@@ -484,6 +501,76 @@ adaptive :: proc(min_width: f32, gap := Space.MD, fill := Fill.Width) -> bool {
 	)
 	b.stacked = stacked
 	return true
+}
+
+// True inside a `field` that shows an error; its controls draw a danger border.
+@(private)
+field_error :: proc() -> bool {
+	#reverse for b in g_boxes {
+		if b.kind == .Field {return b.error}
+	}
+	return false
+}
+
+// Children left to right; a child that does not fit into the line any more starts a new one
+// (chips, badges, legends, tags). Clay cannot wrap, so the lines are built from the children's
+// widths in the previous frame; in the first frame everything is in one line.
+//
+// Containers and these widgets declared directly inside take part: button, badge, chip, avatar,
+// checkbox, toggle, radio, swatch, spinner and text.
+//
+//   if kiln.flow() {
+//       for t in m.tags {kiln.badge(t, .Primary)}
+//   }
+@(deferred_none = close_box)
+flow :: proc(gap := Space.SM, row_gap := Space.SM) -> bool {
+	eid := id("flow")
+	d := clay.GetElementData(eid)
+	b := open_box(
+		eid,
+		{
+			layout = {
+				layoutDirection = .TopToBottom,
+				sizing = {clay.SizingGrow(), clay.SizingFit()},
+				childGap = space(row_gap),
+			},
+			// Without the clip an overlong line would widen the flow, and it would never wrap.
+			clip = {horizontal = true},
+		},
+		kind = .Flow,
+	)
+	b.gap = space(gap)
+	b.avail = d.found ? d.boundingBox.width : max(f32)
+	b.line = clay.GetOpenElementId()
+	return true
+}
+
+// Places the next child of a flow: opens a new line when it would not fit into the current one.
+// kiln's widgets call it themselves; custom widgets call it before opening their element so
+// they wrap inside a `flow` too. `width` < 0 takes the element's width from the previous frame.
+// Only children declared directly in the flow's current line count, so widgets used inside
+// other widgets are not affected.
+flow_item :: proc(eid: Id, width: f32 = -1) {
+	p := parent_box()
+	if p == nil || p.kind != .Flow || clay.GetOpenElementId() != p.line {return}
+	w := width
+	if w < 0 {
+		d := clay.GetElementData(eid)
+		w = d.found ? d.boundingBox.width : 0
+	}
+	gap := f32(p.gap)
+	if p.count == 0 || p.line_x + gap + w > p.avail {
+		if p.count > 0 {clay._CloseElement()}
+		clay._OpenElement()
+		clay.ConfigureOpenElement(
+			{layout = {sizing = {clay.SizingFit(), clay.SizingFit()}, childGap = p.gap, childAlignment = {y = .Center}}},
+		)
+		p.line = clay.GetOpenElementId()
+		p.line_x = w
+	} else {
+		p.line_x += gap + w
+	}
+	p.count += 1
 }
 
 // True while the innermost `adaptive` is stacked (a column), e.g. to choose a different layout.
@@ -500,11 +587,16 @@ stacked :: proc() -> bool {
 //   if kiln.field("Sprache", "Gilt für alle Fenster") {
 //       if v, ok := kiln.select(m.language, LANGUAGES[:]); ok { ... }
 //   }
+//
+// A non-empty `error` is shown instead of the help text, in the danger color, and gives the text
+// fields, selects and date fields in the block a danger border:
+//
+//   if kiln.field("E-Mail", error = valid(m.email) ? "" : "Keine gültige Adresse") { ... }
 @(deferred_none = close_box)
-field :: proc(label: string, help := "") -> bool {
+field :: proc(label: string, help := "", error := "") -> bool {
 	eid := id(label)
 	label_w := size(.Control) * 6 // room for about 20 characters of body text
-	narrow := last_width(eid) < label_w * 2.4
+	narrow := element_width(eid) < label_w * 2.4
 
 	b := open_box(
 		eid,
@@ -515,7 +607,9 @@ field :: proc(label: string, help := "") -> bool {
 				childGap = narrow ? space(.XS) : space(.LG),
 			},
 		},
+		kind = .Field,
 	)
+	b.error = len(error) > 0
 
 	// In a row, center the first label line on the first control line.
 	top: u16 = 0
@@ -531,7 +625,11 @@ field :: proc(label: string, help := "") -> bool {
 	},
 	) {
 		text(label, .Body)
-		if len(help) > 0 {text(help, .Caption, .Muted)}
+		if len(error) > 0 {
+			text(error, .Caption, .Danger)
+		} else if len(help) > 0 {
+			text(help, .Caption, .Muted)
+		}
 	}
 
 	clay._OpenElement()

@@ -44,6 +44,8 @@ Model :: struct {
 	range:   Range,
 	counter: int,
 	step:    int,
+	picked:  int, // highlighted bar, -1 = none
+	segment: string, // the clicked timeline segment
 }
 
 Set_Range :: struct {
@@ -56,22 +58,31 @@ Set_Step :: struct {
 	step: int,
 }
 Reset_Counter :: struct {}
+Pick_Bar :: struct {
+	index: int,
+}
+Pick_Segment :: struct {
+	row, segment: int,
+}
 
 Msg :: union {
 	Set_Range,
 	Count,
 	Set_Step,
 	Reset_Counter,
+	Pick_Bar,
+	Pick_Segment,
 }
 
 init :: proc() -> Model {
-	return {range = .Week, step = 1}
+	return {range = .Week, step = 1, picked = -1}
 }
 
 update :: proc(m: ^Model, msg: Msg) {
 	switch v in msg {
 	case Set_Range:
 		m.range = v.range
+		m.picked = -1
 	case Count:
 		m.counter += v.delta
 	case Set_Step:
@@ -79,6 +90,12 @@ update :: proc(m: ^Model, msg: Msg) {
 	case Reset_Counter:
 		m.counter = 0
 		kiln.toast("Zähler zurückgesetzt")
+	case Pick_Bar:
+		m.picked = v.index == m.picked ? -1 : v.index
+	case Pick_Segment:
+		delete(m.segment)
+		row := usage()[v.row]
+		m.segment = v.segment < 0 ? fmt.aprintf("%s: %d Abschnitte", row.label, len(row.segments)) : fmt.aprintf("%s: %s", row.label, row.segments[v.segment].tooltip)
 	}
 }
 
@@ -132,12 +149,7 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 	if kiln.grid(200) {
 		for s in stats {
 			if kiln.card(gap = .XS) {
-				kiln.text(s.title, .Caption, .Muted)
-				kiln.text(s.value, .Title)
-				if kiln.row(.XS) {
-					kiln.badge(s.delta, s.up ? .Success : .Danger)
-					kiln.text("ggü. Vorperiode", .Caption, .Faint)
-				}
+				kiln.stat(s.title, s.value, "ggü. Vorperiode", s.delta, s.up ? .Success : .Danger)
 			}
 		}
 	}
@@ -145,13 +157,30 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 	if kiln.adaptive(820) {
 		if kiln.card("Besucher") {
 			values, labels := visitors(m.range)
-			kiln.bar_chart(values, labels, height = 200)
+			format :: proc(v: f32) -> string {return fmt.tprintf("%.0f Besucher", v)}
+			if i, ok := kiln.bar_chart(
+				values,
+				labels,
+				height = 200,
+				format = format,
+				highlight = m.picked,
+				value_axis = true,
+			); ok {
+				append(out, Pick_Bar{i})
+			}
+			if m.picked >= 0 && m.picked < len(values) {
+				kiln.text(fmt.tprintf("%s: %.0f Besucher", labels[m.picked], values[m.picked]), .Caption, .Info)
+			} else {
+				kiln.text("Ein Klick auf einen Balken hebt ihn hervor.", .Caption, .Faint)
+			}
 		}
 		if kiln.column(.MD, width = 320) {
 			counter_card(m, out)
 			servers_card()
 		}
 	}
+
+	usage_card(m, out)
 
 	if kiln.card("Letzte Aktivitäten") {
 		for a in ACTIVITY {
@@ -182,6 +211,45 @@ counter_card :: proc(m: ^Model, out: ^[dynamic]Msg) {
 				append(out, Reset_Counter{})
 			}
 		}
+	}
+}
+
+APPS := [?]string{"Editor", "Browser", "Terminal", "Chat", "Musik"}
+DEVICES := [?]string{"Laptop", "Desktop", "Handy"}
+HOURS := [?]string{"0", "6", "12", "18", "24"}
+
+// Made-up usage of the apps over a day (minutes), one row per device.
+usage :: proc() -> []kiln.Timeline_Row {
+	rows := make([]kiln.Timeline_Row, len(DEVICES), context.temp_allocator)
+	for device, d in DEVICES {
+		segs := make([dynamic]kiln.Timeline_Segment, context.temp_allocator)
+		t := f64(7 * 60 + d * 45)
+		for i := 0; t < 23 * 60; i += 1 {
+			app := (i * 7 + d * 3) % len(APPS)
+			length := f64(10 + (i * 37 + d * 11) % 80)
+			append(
+				&segs,
+				kiln.Timeline_Segment {
+					start = t,
+					end = t + length,
+					color = kiln.chart_color(app),
+					tooltip = fmt.tprintf("%s, %02d:%02d, %.0f min", APPS[app], int(t) / 60, int(t) % 60, length),
+				},
+			)
+			t += length + f64((i * 13 + d * 7) % 40)
+		}
+		rows[d] = {label = device, start = 0, end = 24 * 60, segments = segs[:]}
+	}
+	return rows
+}
+
+usage_card :: proc(m: ^Model, out: ^[dynamic]Msg) {
+	if kiln.card("Nutzung heute") {
+		if r, s, ok := kiln.timeline(usage(), HOURS[:], label_width = 72); ok {append(out, Pick_Segment{r, s})}
+		items := make([]kiln.Legend_Item, len(APPS), context.temp_allocator)
+		for a, i in APPS {items[i] = {a, kiln.chart_color(i)}}
+		kiln.legend(items)
+		if len(m.segment) > 0 {kiln.text(m.segment, .Caption, .Info)}
 	}
 }
 

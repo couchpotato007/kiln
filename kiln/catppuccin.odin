@@ -17,6 +17,7 @@ Palette :: struct {
 	text, subtext0:               Color,
 	mauve, blue, green, yellow:   Color,
 	red:                          Color,
+	peach, pink, teal:            Color,
 }
 
 @(private)
@@ -35,6 +36,9 @@ PALETTES := [Flavor]Palette {
 		green = {166, 227, 161, 255},
 		yellow = {249, 226, 175, 255},
 		red = {243, 139, 168, 255},
+		peach = {250, 179, 135, 255},
+		pink = {245, 194, 231, 255},
+		teal = {148, 226, 213, 255},
 	},
 	.Macchiato = {
 		base = {36, 39, 58, 255},
@@ -50,6 +54,9 @@ PALETTES := [Flavor]Palette {
 		green = {166, 218, 149, 255},
 		yellow = {238, 212, 159, 255},
 		red = {237, 135, 150, 255},
+		peach = {245, 169, 127, 255},
+		pink = {245, 189, 230, 255},
+		teal = {139, 213, 202, 255},
 	},
 	.Frappe = {
 		base = {48, 52, 70, 255},
@@ -65,6 +72,9 @@ PALETTES := [Flavor]Palette {
 		green = {166, 209, 137, 255},
 		yellow = {229, 200, 144, 255},
 		red = {231, 130, 132, 255},
+		peach = {239, 159, 118, 255},
+		pink = {244, 184, 228, 255},
+		teal = {129, 200, 190, 255},
 	},
 	.Latte = {
 		base = {239, 241, 245, 255},
@@ -80,6 +90,9 @@ PALETTES := [Flavor]Palette {
 		green = {64, 160, 43, 255},
 		yellow = {223, 142, 29, 255},
 		red = {210, 15, 57, 255},
+		peach = {254, 100, 11, 255},
+		pink = {234, 118, 203, 255},
+		teal = {23, 146, 153, 255},
 	},
 }
 
@@ -103,6 +116,7 @@ catppuccin_colors :: proc(flavor: Flavor) -> Colors {
 		warning = p.yellow,
 		danger = p.red,
 		selection = fade(p.blue, 0.35),
+		chart = {p.blue, p.peach, p.green, p.yellow, p.pink, p.teal, p.mauve, p.red},
 	}
 }
 

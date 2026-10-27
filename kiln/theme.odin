@@ -21,6 +21,7 @@ Colors :: struct {
 	primary, on_primary:                    Color, // on_primary: text drawn on any accent color
 	info, success, warning, danger:         Color,
 	selection:                              Color, // text selection (semi-transparent)
+	chart:                                  [8]Color, // categorical colors for charts, see `chart_color`
 }
 
 // Background slots for containers.
@@ -100,7 +101,8 @@ Metrics :: struct {
 	font_base:      f32, // font size of `.Body`
 	font_ratio:     f32, // factor between two neighbouring text styles
 	font_faces:     [TextStyle]FontFace,
-	font_files:     [FontFace]cstring,
+	font_files:     [FontFace]cstring, // paths, relative to the working directory
+	font_data:      [FontFace][]u8, // font files in memory (e.g. `#load`ed); win over `font_files`
 	anim_speed:     f32, // rate per second of hover / toggle fades
 	tooltip_delay:  f32, // seconds of hover before a tooltip shows
 	toast_duration: f32, // seconds a toast stays visible
@@ -108,12 +110,29 @@ Metrics :: struct {
 	tint_alpha:     f32, // opacity of tinted backgrounds (badges, selected items)
 	backdrop_alpha: f32, // opacity of the dialog / drawer backdrop
 	stripe_alpha:   f32, // opacity of the zebra stripes in tables
+	locale:         Locale, // month / weekday names for calendars (`locale_en`, `locale_de`)
 }
 
 // Colors and metrics. Fields of both parts can be accessed directly: `t.primary`, `t.radii[.MD]`.
 Theme :: struct {
 	using colors:  Colors,
 	using metrics: Metrics,
+}
+
+// The Iosevka subsets in resources/ are compiled into the binary, so apps start from any
+// directory. Build with `-define:KILN_EMBED_FONTS=false` to load `font_files` at runtime instead
+// (see tools/subset_font for making subsets of other fonts).
+KILN_EMBED_FONTS :: #config(KILN_EMBED_FONTS, true)
+
+when KILN_EMBED_FONTS {
+	@(private)
+	EMBEDDED_FONTS := [FontFace][]u8 {
+		.Regular = #load("../resources/kiln-regular.ttf"),
+		.Bold    = #load("../resources/kiln-bold.ttf"),
+	}
+} else {
+	@(private)
+	EMBEDDED_FONTS: [FontFace][]u8
 }
 
 // 4px based spacing, 36px controls, 16px body text, Iosevka.
@@ -144,7 +163,8 @@ default_metrics :: proc() -> Metrics {
 			.Title = .Bold,
 			.Headline = .Bold,
 		},
-		font_files = {.Regular = "resources/Iosevka-Regular.ttf", .Bold = "resources/Iosevka-SemiBold.ttf"},
+		font_files = {.Regular = "resources/kiln-regular.ttf", .Bold = "resources/kiln-bold.ttf"},
+		font_data = EMBEDDED_FONTS,
 		anim_speed = 14,
 		tooltip_delay = 0.4,
 		toast_duration = 3,
@@ -152,6 +172,7 @@ default_metrics :: proc() -> Metrics {
 		tint_alpha = 0.18,
 		backdrop_alpha = 0.45,
 		stripe_alpha = 0.5,
+		locale = locale_en(),
 	}
 }
 

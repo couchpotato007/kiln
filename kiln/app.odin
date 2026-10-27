@@ -32,6 +32,12 @@ Config :: struct {
 	theme:        Maybe(Theme), // default: Catppuccin Mocha
 	scale:        Scale,
 	no_zoom_keys: bool, // disable Ctrl +/-/0
+
+	// Only used by snapshot builds (`-define:KILN_SNAPSHOT=true`):
+	snapshot_setup:   proc(model: rawptr), // called after `init` (the model as ^Model), e.g. to load test data
+	snapshot_open:    []string, // dialogs / drawers to show; each gets its own extra image per size
+	snapshot_pointer: [2]f32, // pointer position in units, to capture a hover or tooltip (zero = outside)
+	snapshot_clicks:  [][2]f32, // left clicks in units before rendering, e.g. to open a popup
 }
 
 // Runs the view of a sub-model and forwards its messages, converted to the parent's message type:
@@ -60,6 +66,16 @@ now :: proc() -> f64 {
 	return g_in.time
 }
 
+// Puts text on the system clipboard.
+copy_to_clipboard :: proc(s: string) {
+	backend_set_clipboard(s)
+}
+
+// The text on the system clipboard, valid until the end of the frame.
+clipboard :: proc() -> string {
+	return backend_get_clipboard()
+}
+
 // True if `key` was pressed (or auto-repeated) in this frame and no text field has the focus.
 key_pressed :: proc(key: Key) -> bool {
 	return g_focus == 0 && key in g_in.keys
@@ -81,6 +97,8 @@ Key :: enum {
 	Down,
 	Home,
 	End,
+	Page_Up,
+	Page_Down,
 	Backspace,
 	Delete,
 	Enter,
@@ -153,9 +171,11 @@ app_frame :: proc(
 	frame_begin(input, cfg)
 	backend_sync_fonts()
 
+	msgs := make([dynamic]Msg, context.temp_allocator)
+	tasks_drain(&msgs)
+
 	if a.tick != nil {a.tick(model, input.dt)}
 
-	msgs := make([dynamic]Msg, context.temp_allocator)
 	clay.BeginLayout()
 	if clay.UI(clay.ID("kiln-root"))(
 	{

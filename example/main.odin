@@ -190,6 +190,25 @@ top_bar :: proc(m: ^Model) {
 	kiln.separator()
 }
 
+// Snapshot extras: a dialog to show (`-define:SNAPSHOT_OPEN=demo`) and a click in units before
+// rendering (`-define:SNAPSHOT_CLICK_X=700 -define:SNAPSHOT_CLICK_Y=300`, e.g. to open a popup).
+SNAPSHOT_OPEN :: #config(SNAPSHOT_OPEN, "")
+SNAPSHOT_CLICK_X :: #config(SNAPSHOT_CLICK_X, -1)
+SNAPSHOT_CLICK_Y :: #config(SNAPSHOT_CLICK_Y, -1)
+
 main :: proc() {
-	kiln.run(kiln.App(Model, Msg){init = init, update = update, view = view}, {title = "Kiln Demo"})
+	theme := kiln.catppuccin(.Mocha)
+	theme.locale = kiln.locale_de()
+
+	open := [?]string{SNAPSHOT_OPEN}
+	clicks := [?][2]f32{{SNAPSHOT_CLICK_X, SNAPSHOT_CLICK_Y}}
+	kiln.run(
+		kiln.App(Model, Msg){init = init, update = update, view = view},
+		{
+			title = "Kiln Demo",
+			theme = theme,
+			snapshot_open = len(SNAPSHOT_OPEN) > 0 ? open[:] : nil,
+			snapshot_clicks = SNAPSHOT_CLICK_X >= 0 ? clicks[:] : nil,
+		},
+	)
 }

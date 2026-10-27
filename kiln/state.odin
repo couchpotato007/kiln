@@ -200,7 +200,8 @@ Item :: struct {
 @(private)
 g_last: Item
 
-@(private)
+// Makes a custom widget the last item, so `clicked`, `hovered`, `submitted`, `tooltip` and
+// `context_menu` after it refer to it. Pass the `Interaction` from `interact`.
 set_last :: proc(eid: Id, state := Interaction{}, submitted := false) {
 	g_last = {eid, state, submitted}
 }
@@ -314,6 +315,57 @@ is_shown :: proc(name: string) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// Timers
+// ---------------------------------------------------------------------------
+
+@(private)
+Timer :: struct {
+	start: f64,
+	frame: u64, // last frame the timer was asked
+	fired: bool, // `after`: already returned true
+}
+
+@(private)
+g_timers: map[u32]Timer
+
+// The timer called `name`, started now if it is new or was not asked in the previous frame
+// (e.g. its page was not shown), so timers stop with the view that asks them.
+@(private)
+timer :: proc(name: string) -> ^Timer {
+	key := clay.ID(name).id
+	t, ok := g_timers[key]
+	if !ok || t.frame + 1 < g_frame {t = {start = g_in.time}}
+	t.frame = g_frame
+	g_timers[key] = t
+	return &g_timers[key]
+}
+
+// True once every `seconds` (the first time `seconds` after the first call) while it is called
+// in every frame. Timers are keyed by name like dialogs, not by position:
+//
+//   if kiln.every("refresh", 300) {append(out, Refresh{})}
+every :: proc(name: string, seconds: f64) -> bool {
+	t := timer(name)
+	if g_in.time - t.start < seconds {return false}
+	t.start += seconds
+	if g_in.time - t.start >= seconds {t.start = g_in.time} // fell behind: no burst of ticks
+	return true
+}
+
+// True once, `seconds` after the first call (while it is called in every frame).
+after :: proc(name: string, seconds: f64) -> bool {
+	t := timer(name)
+	if t.fired || g_in.time - t.start < seconds {return false}
+	t.fired = true
+	return true
+}
+
+// Starts the timer `name` over.
+reset_timer :: proc(name: string) {
+	delete_key(&g_timers, clay.ID(name).id)
+}
+
+// ---------------------------------------------------------------------------
 // Garbage collection of per-element state
 // ---------------------------------------------------------------------------
 
@@ -334,5 +386,14 @@ collect_garbage :: proc() {
 	}
 	for key, t in g_hover_start {
 		if t.frame + STALE_FRAMES < g_frame {delete_key(&g_hover_start, key)}
+	}
+	for key, t in g_timers {
+		if t.frame + STALE_FRAMES < g_frame {delete_key(&g_timers, key)}
+	}
+	for key, t in g_cuts {
+		if t.frame + STALE_FRAMES < g_frame {delete_key(&g_cuts, key)}
+	}
+	for key, cal in g_calendars {
+		if cal.frame + STALE_FRAMES < g_frame {delete_key(&g_calendars, key)}
 	}
 }

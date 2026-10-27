@@ -76,6 +76,40 @@ to the space they actually get:
 
 Ctrl +/−/0 zooms, which also moves the app between screen classes.
 
+## Widgets
+
+| widget | example |
+| ------ | ------- |
+| containers | `column`, `row`, `center`, `card("Titel")`, `scroll()`, `collapsible("Mehr")`, `list_item(selected)` |
+| responsive | `grid(220)`, `adaptive(720)`, `flow()`, `field("Name", help, error)`, `actions()` |
+| text | `text(s, .Caption, .Muted)`, `text(title, ellipsis = true)`, `badge("Neu", .Primary)`, `avatar(name)` |
+| buttons | `button("OK")`, `button("Entfernen", .Ghost, tone = .Danger)`, `chip("Offen", m.open)` |
+| values | `checkbox`, `toggle`, `radio`, `slider(m.v, 0, 100)`, `text_field(m.s, "Name")`, `text_field(m.pw, "Passwort", password = true)` |
+| choices | `segmented`, `tabs`, `nav`, `select(m.i, OPTIONS[:])`, `chips(m.i, LABELS[:])` |
+| dates | `date_field(m.due, min = kiln.today())`, `calendar(m.day)`, `date_add_months`, `date_parse`, ... |
+| data | `table(m.sel, COLUMNS[:], rows)`, `tree(m.sel, nodes)` |
+| charts | `bar_chart(values, labels, format = f, highlight = i)`, `timeline(rows, ticks)`, `legend(items)`, `swatch(color)`, `chart_color(i)` |
+| feedback | `progress(v, color = c, thin = true)`, `spinner()`, `stat("Umsatz", "1840 €", delta = "+4 %")`, `callout(.Danger, "Fehler")`, `empty_state(title, text)`, `toast("Gespeichert")` |
+| overlays | `dialog("name", "Titel")`, `drawer("nav")`, `show(name)` / `hide()`, `menu("⋯", ITEMS[:])`, `context_menu(ITEMS[:])`, `tooltip("Strg+S")` |
+| other | `image(img)`, `separator()`, `spacer()`, `copy_to_clipboard(s)`, `clipboard()` |
+| effects | `task(work, data)` runs `work` on a thread and delivers its message, `every("refresh", 300)` / `after(name, s)` are timers |
+
+Custom widgets are built from `id`, `interact`, `set_last`, `tooltip_on`, `anim`,
+`element_width`, `element_rect`, `flow_item` and Clay; see the top of `kiln/kiln.odin`
+and `swatch_button` in `example/components`.
+
+## Fonts
+
+kiln compiles subsets of Iosevka (`resources/kiln-regular.ttf`,
+`resources/kiln-bold.ttf`, about 80 KB each) into the binary, so apps start from
+any directory. `-define:KILN_EMBED_FONTS=false` loads `font_files` at runtime
+instead; `font_data` in the theme takes any font file in memory. To make a
+subset of another font (keeps the codepoints kiln loads):
+
+    odin run tools/subset_font -- resources/Iosevka-Regular.ttf resources/kiln-regular.ttf
+
+or with fonttools: `pyftsubset Iosevka-Regular.ttf --unicodes=U+20-7E,U+A0-17F,U+2010-205E,U+20AC,U+2190-21FF,U+2212,U+22EF,U+2302,U+25A0-25FF,U+2600-2609,U+2630,U+2699,U+2713-2718 --output-file=kiln-regular.ttf`.
+
 ## Example
 
     odin run example -collection:lib=.
@@ -93,7 +127,16 @@ headlessly into PNGs (phone, tablet, desktop):
 
     odin run example -collection:lib=. -define:KILN_SNAPSHOT=true -define:START_PAGE=2
 
-The files land in `snapshots/` (`-define:KILN_SNAPSHOT_DIR=...` to change).
+The files land in `snapshots/` (`-define:KILN_SNAPSHOT_DIR=...` to change),
+`-define:KILN_SNAPSHOT_SIZES=phone,desktop` limits the sizes. `Config` has
+snapshot hooks: `snapshot_setup` loads test data after `init`,
+`snapshot_open` renders an extra image per dialog / drawer, `snapshot_pointer`
+hovers a point (tooltips) and `snapshot_clicks` clicks before rendering (open
+popups). Tasks run synchronously in snapshots. The demo exposes two of them:
+
+    odin run example -collection:lib=. -define:KILN_SNAPSHOT=true -define:START_PAGE=4 -define:SNAPSHOT_OPEN=reset
+
+Tests run headlessly: `odin test kiln -define:KILN_SNAPSHOT=true`.
 
 # Problems
 

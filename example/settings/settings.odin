@@ -54,6 +54,8 @@ Model :: struct {
 	volume:    int,
 	name:      string,
 	email:     string,
+	password:  string,
+	birthday:  kiln.Date,
 }
 
 Set_Flavor :: struct {
@@ -86,6 +88,12 @@ Set_Name :: struct {
 Set_Email :: struct {
 	text: string,
 }
+Set_Password :: struct {
+	text: string,
+}
+Set_Birthday :: struct {
+	date: kiln.Date,
+}
 Save :: struct {}
 Reset :: struct {}
 
@@ -100,6 +108,8 @@ Msg :: union {
 	Set_Volume,
 	Set_Name,
 	Set_Email,
+	Set_Password,
+	Set_Birthday,
 	Save,
 	Reset,
 }
@@ -114,6 +124,7 @@ init :: proc() -> Model {
 		volume = 60,
 		name = strings.clone("Max Mustermann"),
 		email = strings.clone("max@example.org"),
+		birthday = {1990, 5, 17},
 	}
 }
 
@@ -138,6 +149,7 @@ apply_theme :: proc(m: ^Model) {
 	case .Large:
 		metrics.font_base += 2
 	}
+	metrics.locale = m.language == 0 ? kiln.locale_de() : kiln.locale_en()
 	kiln.set_theme({colors = kiln.catppuccin_colors(m.flavor), metrics = metrics})
 }
 
@@ -156,6 +168,7 @@ update :: proc(m: ^Model, msg: Msg) {
 		kiln.set_zoom(f32(v.percent) / 100)
 	case Set_Language:
 		m.language = v.index
+		apply_theme(m) // month names in the calendar
 	case Set_Notify:
 		m.notify = v.on
 	case Set_Sounds:
@@ -168,11 +181,17 @@ update :: proc(m: ^Model, msg: Msg) {
 	case Set_Email:
 		delete(m.email)
 		m.email = strings.clone(v.text)
+	case Set_Password:
+		delete(m.password)
+		m.password = strings.clone(v.text)
+	case Set_Birthday:
+		m.birthday = v.date
 	case Save:
 		kiln.toast("Konto gespeichert", .Success)
 	case Reset:
 		delete(m.name)
 		delete(m.email)
+		delete(m.password)
 		m^ = init()
 		apply_theme(m)
 		kiln.set_zoom(1)
@@ -234,14 +253,26 @@ view :: proc(m: ^Model, out: ^[dynamic]Msg) {
 		if kiln.field("Name") {
 			if t, ok := kiln.text_field(m.name, "Dein Name"); ok {append(out, Set_Name{t})}
 		}
-		if kiln.field("E-Mail", "Wird nie veröffentlicht.") {
+		email_ok := strings.contains(m.email, "@")
+		if kiln.field(
+			"E-Mail",
+			"Wird nie veröffentlicht.",
+			error = email_ok ? "" : "Das sieht nicht nach einer E-Mail-Adresse aus.",
+		) {
 			if t, ok := kiln.text_field(m.email, "name@example.org"); ok {append(out, Set_Email{t})}
-			if !strings.contains(m.email, "@") {
-				kiln.text("Das sieht nicht nach einer E-Mail-Adresse aus.", .Caption, .Danger)
+		}
+		if kiln.field("Passwort", "Mindestens 8 Zeichen.") {
+			if t, ok := kiln.text_field(m.password, "Passwort", password = true); ok {
+				append(out, Set_Password{t})
+			}
+		}
+		if kiln.field("Geburtstag") {
+			if d, ok := kiln.date_field(m.birthday, max = kiln.today(), placeholder = "Datum wählen"); ok {
+				append(out, Set_Birthday{d})
 			}
 		}
 		if kiln.actions() {
-			if kiln.button("Speichern", disabled = !strings.contains(m.email, "@")) {append(out, Save{})}
+			if kiln.button("Speichern", disabled = !email_ok) {append(out, Save{})}
 		}
 	}
 

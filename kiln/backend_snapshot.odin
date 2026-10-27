@@ -38,30 +38,75 @@ when KILN_SNAPSHOT {
 	@(private)
 	SNAPSHOT_FRAMES :: 60
 
+	// The sizes to render, e.g. `-define:KILN_SNAPSHOT_SIZES=phone,desktop`.
+	KILN_SNAPSHOT_SIZES :: #config(KILN_SNAPSHOT_SIZES, "phone,tablet,desktop")
+
+	// Frame of the first click of `Config.snapshot_clicks`, and frames between clicks.
+	@(private)
+	SNAPSHOT_CLICK_START :: 10
+	@(private)
+	SNAPSHOT_CLICK_EVERY :: 6
+
 	run :: proc(a: App($Model, $Msg), config := Config{}) {
 		cfg := app_init(config)
 		os.make_directory_all(KILN_SNAPSHOT_DIR)
 		name := strings.clone(snap_file_name(string(cfg.title)))
 
 		for s in SNAPSHOT_SIZES {
-			model := a.init()
-			for f in 0 ..< SNAPSHOT_FRAMES {
-				input := Input {
-					mouse  = {-1000, -1000},
-					dt     = 1.0 / 60,
-					time   = f64(f) / 60,
-					window = {s.width, s.height},
-					dpi    = 1,
-				}
-				commands, msgs := app_frame(a, &model, input, cfg)
-				if f == SNAPSHOT_FRAMES - 1 {
-					path := fmt.tprintf("%s/%s-%s.png", KILN_SNAPSHOT_DIR, name, s.name)
-					snap_render(&commands, int(s.width), int(s.height), path)
-					fmt.println("snapshot:", path)
-				}
-				app_update(a, &model, msgs)
-				free_all(context.temp_allocator)
+			wanted := false
+			for w in strings.split(KILN_SNAPSHOT_SIZES, ",", context.temp_allocator) {
+				if strings.trim_space(w) == s.name {wanted = true}
 			}
+			if !wanted {continue}
+			snap_run(a, cfg, s, fmt.tprintf("%s-%s", name, s.name), "")
+			for o in cfg.snapshot_open {
+				snap_run(a, cfg, s, fmt.tprintf("%s-%s-%s", name, s.name, snap_file_name(o)), o)
+			}
+		}
+	}
+
+	// Renders one image from a fresh model and fresh UI state.
+	@(private)
+	snap_run :: proc(a: App($Model, $Msg), cfg: Config, s: SnapshotSize, file_temp, overlay: string) {
+		file := strings.clone(file_temp) // the temp allocator is cleared every frame
+		defer delete(file)
+		g_overlay, g_popup, g_focus, g_active = 0, 0, 0, 0
+		clear(&g_hover_start)
+		clear(&g_calendars)
+		clear(&g_timers)
+
+		model := a.init()
+		if cfg.snapshot_setup != nil {cfg.snapshot_setup(&model)}
+		if len(overlay) > 0 {show(overlay)}
+
+		last_click := SNAPSHOT_CLICK_START + SNAPSHOT_CLICK_EVERY * len(cfg.snapshot_clicks)
+		for f in 0 ..< max(SNAPSHOT_FRAMES, last_click + 30) {
+			input := Input {
+				mouse  = {-1000, -1000},
+				dt     = 1.0 / 60,
+				time   = f64(f) / 60,
+				window = {s.width, s.height},
+				dpi    = 1,
+			}
+			if cfg.snapshot_pointer != {} {input.mouse = cfg.snapshot_pointer * g_scale_factor}
+			// A click is a press in one frame and the release in the next, at the same place.
+			if k := f - SNAPSHOT_CLICK_START; k >= 0 && k / SNAPSHOT_CLICK_EVERY < len(cfg.snapshot_clicks) {
+				input.mouse = cfg.snapshot_clicks[k / SNAPSHOT_CLICK_EVERY] * g_scale_factor
+				switch k % SNAPSHOT_CLICK_EVERY {
+				case 0:
+					input.pressed, input.down = {.Left}, {.Left}
+				case 1:
+					input.released = {.Left}
+				}
+			}
+			commands, msgs := app_frame(a, &model, input, cfg)
+			if f == max(SNAPSHOT_FRAMES, last_click + 30) - 1 {
+				path := fmt.tprintf("%s/%s.png", KILN_SNAPSHOT_DIR, file)
+				snap_render(&commands, int(s.width), int(s.height), path)
+				fmt.println("snapshot:", path)
+			}
+			app_update(a, &model, msgs)
+			free_all(context.temp_allocator)
 		}
 	}
 
@@ -153,12 +198,16 @@ when KILN_SNAPSHOT {
 		for face in FontFace {
 			f := &g_snap_fonts[face]
 			if f.loaded {continue}
-			data, err := os.read_entire_file(string(g_theme.font_files[face]), context.allocator)
-			if err != nil {
-				fmt.eprintln("snapshot: cannot read font", g_theme.font_files[face])
-				continue
+			if embedded := g_theme.font_data[face]; len(embedded) > 0 {
+				f.data = embedded
+			} else {
+				data, err := os.read_entire_file(string(g_theme.font_files[face]), context.allocator)
+				if err != nil {
+					fmt.eprintln("snapshot: cannot read font", g_theme.font_files[face])
+					continue
+				}
+				f.data = data
 			}
-			f.data = data
 			stbtt.InitFont(&f.info, raw_data(f.data), 0)
 			asc, desc, gap: i32
 			stbtt.GetFontVMetrics(&f.info, &asc, &desc, &gap)

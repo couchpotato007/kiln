@@ -83,6 +83,8 @@ when !KILN_SNAPSHOT {
 		.Down      = .DOWN,
 		.Home      = .HOME,
 		.End       = .END,
+		.Page_Up   = .PAGE_UP,
+		.Page_Down = .PAGE_DOWN,
 		.Backspace = .BACKSPACE,
 		.Delete    = .DELETE,
 		.Enter     = .ENTER,
@@ -172,6 +174,7 @@ when !KILN_SNAPSHOT {
 		sizes: [TextStyle]u16,
 		faces: [TextStyle]FontFace,
 		files: [FontFace]cstring,
+		data:  [FontFace]rawptr,
 	}
 
 	@(private)
@@ -185,14 +188,21 @@ when !KILN_SNAPSHOT {
 			faces = g_theme.font_faces,
 			files = g_theme.font_files,
 		}
+		for face in FontFace {want.data[face] = raw_data(g_theme.font_data[face])}
 		for s in TextStyle {want.sizes[s] = font_size(s)}
 		if rl_has_fonts && want == rl_loaded {return}
 
 		rl_unload_fonts()
 		cps := codepoints()
 		for s in TextStyle {
-			path := want.files[want.faces[s]]
-			f := rl.LoadFontEx(path, i32(want.sizes[s]) * RL_OVERSAMPLE, raw_data(cps), i32(len(cps)))
+			face := want.faces[s]
+			px_size := i32(want.sizes[s]) * RL_OVERSAMPLE
+			f: rl.Font
+			if data := g_theme.font_data[face]; len(data) > 0 {
+				f = rl.LoadFontFromMemory(".ttf", raw_data(data), i32(len(data)), px_size, raw_data(cps), i32(len(cps)))
+			} else {
+				f = rl.LoadFontEx(want.files[face], px_size, raw_data(cps), i32(len(cps)))
+			}
 			rl.SetTextureFilter(f.texture, .BILINEAR)
 			rl_fonts[s] = f
 		}

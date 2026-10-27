@@ -17,12 +17,14 @@ ButtonVariant :: enum {
 
 // A button; returns true in the frame it was clicked. A single-character label (an icon like
 // "✕" or "☰") gives a square button. `fill` makes it as wide as its container; inside
-// `actions` on compact screens buttons fill automatically.
+// `actions` on compact screens buttons fill automatically. `tone` colors the label of ghost and
+// secondary buttons, e.g. a red ghost "Entfernen".
 button :: proc(
 	label: string,
 	variant := ButtonVariant.Primary,
 	disabled := false,
 	fill := false,
+	tone := Tone.Default,
 ) -> bool {
 	c := &g_theme
 	eid := id(label)
@@ -42,6 +44,7 @@ button :: proc(
 		// A transparent version of the hover color, so the fade does not pass through black.
 		bg, hover, active, fg = fade(c.surface, 0), c.surface, c.surface_hover, c.text
 	}
+	if tone != .Default && (variant == .Ghost || variant == .Secondary) {fg = tone_color(tone)}
 	if disabled {
 		bg = variant == .Ghost ? fade(c.surface, 0) : c.surface
 		fg = c.text_faint
@@ -75,6 +78,7 @@ button :: proc(
 	}
 	if variant == .Secondary {decl.border = outline(c.border)}
 
+	flow_item(eid)
 	if clay.UI(eid)(decl) {
 		clay.TextDynamic(label, style)
 	}
@@ -152,6 +156,7 @@ mark :: proc(eid: Id, label: string, shape: MarkShape, on: bool, s: Interaction)
 	m := size(.Mark)
 	accent := s.disabled ? c.text_faint : c.primary
 
+	flow_item(eid)
 	if clay.UI(eid)({layout = {childGap = space(.SM), childAlignment = {y = .Center}}}) {
 		switch shape {
 		case .Box, .Round:
@@ -213,13 +218,14 @@ slider :: proc(
 	value: $T,
 	lo, hi: T,
 	disabled := false,
+	key := "",
 ) -> (
 	new_value: T,
 	changed: bool,
 ) where intrinsics.type_is_integer(T) ||
 	intrinsics.type_is_float(T) {
 	c := &g_theme
-	eid := id("slider")
+	eid := id(len(key) > 0 ? key : "slider")
 	s := interact(eid, disabled)
 	data := clay.GetElementData(eid)
 	knob := size(.Mark)

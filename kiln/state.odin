@@ -123,8 +123,15 @@ Interaction :: struct {
 	held:          bool, // the left button went down on the element and is still down (anywhere)
 	clicked:       bool, // released over the element in this frame
 	right_clicked: bool, // the right button went down on the element in this frame
+	started:       bool, // the left button went down on the element in this frame (a drag starts)
+	released:      bool, // the left button that went down on the element was released in this frame, anywhere
 	disabled:      bool,
+	pos:           [2]f32, // pointer position in pixels, relative to the element's top left corner (as laid out in the previous frame)
+	delta:         [2]f32, // pointer movement since the previous frame in pixels
 }
+
+@(private)
+g_pointer_delta: [2]f32
 
 @(private)
 g_active: u32 // element that owns the current left press
@@ -149,7 +156,12 @@ interact :: proc(eid: Id, disabled := false) -> (s: Interaction) {
 		s.held = .Left in g_in.down
 		s.pressed = s.hovered && s.held
 		s.clicked = s.hovered && .Left in g_in.released
+		s.started = .Left in g_in.pressed
+		s.released = .Left in g_in.released
 	}
+	d := clay.GetElementData(eid)
+	s.pos = g_in.mouse - {d.boundingBox.x, d.boundingBox.y}
+	s.delta = g_pointer_delta
 	s.right_clicked = g_right == eid.id
 	return
 }
@@ -366,6 +378,51 @@ reset_timer :: proc(name: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Widget state
+// ---------------------------------------------------------------------------
+
+@(private)
+Widget_State :: struct {
+	data:    rawptr,
+	type:    typeid,
+	destroy: proc(_: rawptr),
+	frame:   u64, // last frame the state was asked for
+}
+
+@(private)
+g_widget_states: map[u32]Widget_State
+
+// UI state of a custom widget that kiln keeps between frames, one `T` per element id (a drag
+// in progress, a scroll position, a cache). It starts zeroed (`created` is true then) and is
+// freed when the widget was not shown for a while; `destroy` frees what `T` owns:
+//
+//   Draft :: struct {points: [dynamic][2]f32}
+//   draft, _ := kiln.widget_state(eid, Draft, proc(d: ^Draft) {delete(d.points)})
+widget_state :: proc(eid: Id, $T: typeid, destroy: proc(_: ^T) = nil) -> (state: ^T, created: bool) {
+	w, ok := &g_widget_states[eid.id]
+	if !ok {
+		w = map_insert(&g_widget_states, eid.id, Widget_State{data = new(T), type = T, destroy = auto_cast destroy})
+		created = true
+	}
+	assert(w.type == T, "kiln.widget_state: an id is used with two different types")
+	w.frame = g_frame
+	return (^T)(w.data), created
+}
+
+@(private)
+widget_state_free :: proc(w: Widget_State) {
+	if w.destroy != nil {w.destroy(w.data)}
+	free(w.data)
+}
+
+// Frees the state of every widget, e.g. before a fresh snapshot run.
+@(private)
+widget_states_clear :: proc() {
+	for _, w in g_widget_states {widget_state_free(w)}
+	clear(&g_widget_states)
+}
+
+// ---------------------------------------------------------------------------
 // Garbage collection of per-element state
 // ---------------------------------------------------------------------------
 
@@ -390,8 +447,11 @@ collect_garbage :: proc() {
 	for key, t in g_timers {
 		if t.frame + STALE_FRAMES < g_frame {delete_key(&g_timers, key)}
 	}
-	for key, t in g_cuts {
-		if t.frame + STALE_FRAMES < g_frame {delete_key(&g_cuts, key)}
+	for key, w in g_widget_states {
+		if w.frame + STALE_FRAMES < g_frame {
+			widget_state_free(w)
+			delete_key(&g_widget_states, key)
+		}
 	}
 	for key, cal in g_calendars {
 		if cal.frame + STALE_FRAMES < g_frame {delete_key(&g_calendars, key)}

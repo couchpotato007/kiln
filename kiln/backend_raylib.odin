@@ -104,9 +104,31 @@ when !KILN_SNAPSHOT {
 		.Escape    = .ESCAPE,
 		.Tab       = .TAB,
 		.A         = .A,
+		.B         = .B,
 		.C         = .C,
+		.D         = .D,
+		.E         = .E,
+		.F         = .F,
+		.G         = .G,
+		.H         = .H,
+		.I         = .I,
+		.J         = .J,
+		.K         = .K,
+		.L         = .L,
+		.M         = .M,
+		.N         = .N,
+		.O         = .O,
+		.P         = .P,
+		.Q         = .Q,
+		.R         = .R,
+		.S         = .S,
+		.T         = .T,
+		.U         = .U,
 		.V         = .V,
+		.W         = .W,
 		.X         = .X,
+		.Y         = .Y,
+		.Z         = .Z,
 		.Equal     = .EQUAL,
 		.Minus     = .MINUS,
 		.Zero      = .ZERO,
@@ -311,6 +333,9 @@ when !KILN_SNAPSHOT {
 	rl_draw :: proc(commands: ^clay.ClayArray(clay.RenderCommand)) {
 		tints := make([dynamic]Color, context.temp_allocator)
 		scissors := make([dynamic]rl.Rectangle, context.temp_allocator)
+		// Clay emits the background of a painted element after its custom command, which would
+		// cover the shapes: the background is drawn with the custom command and this one skipped.
+		painted: u32
 
 		for i in 0 ..< commands.length {
 			cmd := clay.RenderCommandArray_Get(commands, i)
@@ -319,9 +344,20 @@ when !KILN_SNAPSHOT {
 			switch cmd.commandType {
 			case .None:
 			case .Custom:
-				// Tinted icons (see `image_element`).
-				t := (^TintedImage)(cmd.renderData.custom.customData)
-				if t != nil {rl_image(t.handle, b, t.tint)}
+				d := cmd.renderData.custom
+				painted = cmd.id
+				if d.backgroundColor.a > 0 {rl_rect_rounded(b, d.cornerRadius, rl_color(d.backgroundColor))}
+				if p := (^Painter)(d.customData); p != nil && len(p.shapes) > 0 {
+					r := rl.Rectangle{b.x, b.y, b.width, b.height}
+					if len(scissors) > 0 {r = rl_intersect(r, scissors[len(scissors) - 1])}
+					rl_scissor(r)
+					rl_paint(p, {b.x, b.y})
+					if len(scissors) > 0 {
+						rl_scissor(scissors[len(scissors) - 1])
+					} else {
+						rl.EndScissorMode()
+					}
+				}
 			case .Text:
 				d := cmd.renderData.text
 				s := string(d.stringContents.chars[:d.stringContents.length])
@@ -351,6 +387,7 @@ when !KILN_SNAPSHOT {
 					rl.EndScissorMode()
 				}
 			case .Rectangle:
+				if cmd.id == painted {continue}
 				d := cmd.renderData.rectangle
 				rl_rect_rounded(b, d.cornerRadius, rl_color(d.backgroundColor))
 			case .Border:
@@ -359,6 +396,32 @@ when !KILN_SNAPSHOT {
 				append(&tints, cmd.renderData.overlayColor.color)
 			case .OverlayColorEnd:
 				if len(tints) > 0 {pop(&tints)}
+			}
+		}
+	}
+
+	// The shapes of a painter, relative to `origin`. Lines are segments with a dot on every
+	// point, which gives round joins and caps (translucent lines get darker where they overlap).
+	@(private)
+	rl_paint :: proc(p: ^Painter, origin: [2]f32) {
+		for shape in p.shapes {
+			switch s in shape {
+			case Shape_Line:
+				col := rl_color(s.color)
+				for q, i in s.points {
+					rl.DrawCircleV(origin + q, s.width / 2, col)
+					if i > 0 {rl.DrawLineEx(origin + s.points[i - 1], origin + q, s.width, col)}
+				}
+			case Shape_Circle:
+				if s.width <= 0 {
+					rl.DrawCircleV(origin + s.center, s.radius, rl_color(s.color))
+				} else {
+					inner := max(0, s.radius - s.width / 2)
+					rl.DrawRing(origin + s.center, inner, s.radius + s.width / 2, 0, 360, 48, rl_color(s.color))
+				}
+			case Shape_Image:
+				pos := origin + s.pos
+				rl_image(s.handle, {pos.x, pos.y, s.size.x, s.size.y}, s.tint)
 			}
 		}
 	}

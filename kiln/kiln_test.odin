@@ -7,8 +7,10 @@ package kiln
 // Without the define, tasks run on real threads (the frame test needs the snapshot backend).
 
 import "base:runtime"
+import "core:sync"
 import "core:testing"
 import "core:time"
+import clay "clay-odin"
 
 @(test)
 test_dates :: proc(t: ^testing.T) {
@@ -82,6 +84,10 @@ test_task_messages :: proc(t: ^testing.T) {
 	free_all(context.temp_allocator)
 }
 
+// Tests that run frames share kiln's global UI state (and Clay's), so they take turns.
+@(private = "file")
+g_frames_lock: sync.Mutex
+
 // A frame with only a password field; returns the text it reports.
 @(private = "file")
 Field_Model :: struct {
@@ -107,6 +113,8 @@ test_password_field :: proc(t: ^testing.T) {
 	when !KILN_SNAPSHOT {return}
 	// kiln's UI state lives for the whole program; keep it out of the leak report.
 	context.allocator = runtime.heap_allocator()
+	sync.mutex_lock(&g_frames_lock)
+	defer sync.mutex_unlock(&g_frames_lock)
 	app_init({})
 	input := Input {
 		mouse  = {-1000, -1000},
@@ -217,5 +225,96 @@ test_svg :: proc(t: ^testing.T) {
 		testing.expect(t, ink > 255 * 10)
 		svg_destroy(&svg)
 	}
+	free_all(context.temp_allocator)
+}
+
+// A frame with one custom widget built like an app would build it: `interact`, `widget_state`
+// and a painter. It records what the widget saw.
+@(private = "file")
+Drag_Model :: struct {
+	s:       Interaction,
+	points:  ^[dynamic][2]f32,
+	created: bool,
+	painter: ^Painter,
+}
+
+@(private = "file")
+drag_frame :: proc(m: ^Drag_Model, mouse: [2]f32, buttons: bit_set[MouseButton], edge: enum {
+		None,
+		Press,
+		Release,
+	}) {
+	view :: proc(m: ^Drag_Model, _: ^[dynamic]int) {
+		if column(padding = .LG) {
+			eid := id("pad")
+			m.s = interact(eid)
+			Draft :: struct {
+				points: [dynamic][2]f32,
+			}
+			d: ^Draft
+			d, m.created = widget_state(eid, Draft, proc(d: ^Draft) {delete(d.points)})
+			if m.s.started {clear(&d.points)}
+			if m.s.held {append(&d.points, m.s.pos)}
+			m.points = &d.points
+			m.painter = painter()
+			paint_line(m.painter, d.points[:], 2, g_theme.text)
+			if clay.UI(eid)({layout = {sizing = {clay.SizingFixed(200), clay.SizingFixed(100)}}, custom = paint(m.painter)}) {}
+		}
+	}
+	input := Input {
+		mouse  = mouse,
+		down   = buttons,
+		dt     = 1.0 / 60,
+		window = {400, 300},
+		dpi    = 1,
+	}
+	if edge == .Press {input.pressed = {.Left}}
+	if edge == .Release {input.released = {.Left}}
+	app_frame(App(Drag_Model, int){view = view}, m, input, {})
+}
+
+@(test)
+test_drag_and_paint :: proc(t: ^testing.T) {
+	when !KILN_SNAPSHOT {return}
+	context.allocator = runtime.heap_allocator()
+	sync.mutex_lock(&g_frames_lock)
+	defer sync.mutex_unlock(&g_frames_lock)
+	app_init({})
+	m: Drag_Model
+	// Two frames to lay the pad out (padding .LG puts it off the origin) and register it.
+	drag_frame(&m, {-100, -100}, {}, .None)
+	drag_frame(&m, {-100, -100}, {}, .None)
+	testing.expect(t, !m.created)
+
+	drag_frame(&m, {40, 50}, {.Left}, .Press)
+	testing.expect(t, m.s.started)
+	testing.expect(t, m.s.held)
+	origin := [2]f32{40, 50} - m.s.pos // the pad's top left corner
+	testing.expect(t, origin.x > 0 && origin.y > 0)
+
+	// Dragging out of the pad still belongs to it.
+	drag_frame(&m, {90, 60}, {.Left}, .None)
+	testing.expect(t, !m.s.started)
+	testing.expect_value(t, m.s.delta, [2]f32{50, 10})
+	drag_frame(&m, {500, 60}, {.Left}, .None)
+	testing.expect(t, m.s.held)
+	testing.expect(t, !m.s.hovered)
+
+	drag_frame(&m, {500, 60}, {}, .Release)
+	testing.expect(t, m.s.released)
+	testing.expect(t, !m.s.clicked) // released outside the pad
+	testing.expect_value(t, len(m.points), 3)
+	if len(m.points) == 3 {testing.expect_value(t, m.points[1], [2]f32{90, 60} - origin)}
+	testing.expect_value(t, len(m.painter.shapes), 1)
+
+	drag_frame(&m, {500, 60}, {}, .None)
+	testing.expect(t, !m.s.released)
+
+	// The state is freed with `destroy` once the widget is gone for long enough.
+	testing.expect(t, m.s.pos != {})
+	testing.expect(t, len(g_widget_states) >= 1)
+	g_frame += STALE_FRAMES + 1
+	collect_garbage()
+	testing.expect_value(t, len(g_widget_states), 0)
 	free_all(context.temp_allocator)
 }

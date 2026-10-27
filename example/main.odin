@@ -10,6 +10,7 @@ package main
 //   odin run example -collection:lib=.
 //   odin run example -collection:lib=. -define:KILN_SNAPSHOT=true -define:START_PAGE=2
 
+import "canvas"
 import "components"
 import "core:os"
 import "dashboard"
@@ -30,6 +31,7 @@ Page :: enum {
 	Files,
 	Settings,
 	Components,
+	Canvas,
 }
 
 PAGES := [Page]kiln.NavItem {
@@ -39,6 +41,7 @@ PAGES := [Page]kiln.NavItem {
 	.Files      = {icons.FOLDER, "Dateien"},
 	.Settings   = {icons.SLIDERS, "Einstellungen"},
 	.Components = {icons.SHAPES, "Komponenten"},
+	.Canvas     = {icons.PEN, "Zeichnen"},
 }
 
 SUBTITLES := [Page]string {
@@ -48,6 +51,7 @@ SUBTITLES := [Page]string {
 	.Files      = "Ein Dateibaum mit Vorschau.",
 	.Settings   = "Ein Formular, dessen Beschriftungen bei wenig Platz über die Felder wandern.",
 	.Components = "Alle Widgets in einer Übersicht.",
+	.Canvas     = "Eine Zeichenfläche, nur aus der öffentlichen API von kiln gebaut.",
 }
 
 SIDEBAR_WIDTH :: 232
@@ -66,6 +70,7 @@ Msg :: union {
 	files.Msg,
 	settings.Msg,
 	components.Msg,
+	canvas.Msg,
 }
 
 Model :: struct {
@@ -76,6 +81,7 @@ Model :: struct {
 	files:      files.Model,
 	settings:   settings.Model,
 	components: components.Model,
+	canvas:     canvas.Model,
 }
 
 init :: proc() -> Model {
@@ -87,6 +93,7 @@ init :: proc() -> Model {
 		files = files.init(),
 		settings = settings.init(),
 		components = components.init(),
+		canvas = canvas.init(),
 	}
 }
 
@@ -106,6 +113,8 @@ update :: proc(m: ^Model, msg: Msg) {
 		settings.update(&m.settings, v)
 	case components.Msg:
 		components.update(&m.components, v)
+	case canvas.Msg:
+		canvas.update(&m.canvas, v)
 	}
 }
 
@@ -156,6 +165,8 @@ page :: proc(m: ^Model, out: ^[dynamic]Msg) {
 		kiln.embed(out, &m.settings, settings.view)
 	case .Components:
 		kiln.embed(out, &m.components, components.view)
+	case .Canvas:
+		kiln.embed(out, &m.canvas, canvas.view)
 	}
 }
 

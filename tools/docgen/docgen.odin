@@ -40,7 +40,8 @@ PAGES := []Page {
 	{"overlays", "Overlays", "Dialogs, drawers, toasts, menus, context menus and tooltips.", {"dialog.odin", "menu.odin"}},
 	{"icons", "Icons", "Icons from SVG, images and font glyphs.", {"icon.odin", "svg.odin"}},
 	{"theme", "Theme and units", "Colors, metrics, Catppuccin, fonts and turning theme steps into pixels.", {"theme.odin", "catppuccin.odin", "fonts.odin", "units.odin"}},
-	{"state", "State and ids", "Ids, scopes, item queries, animation, dialogs by name and timers.", {"state.odin"}},
+	{"state", "State and ids", "Ids, scopes, item queries, widget state, animation, dialogs by name and timers.", {"state.odin"}},
+	{"paint", "Painting", "Lines, circles and images drawn into an element, for custom widgets.", {"paint.odin"}},
 }
 
 OTHER :: Page{"other", "Other", "Everything that did not fit anywhere else.", nil}

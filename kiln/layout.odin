@@ -142,6 +142,14 @@ open_box :: proc(
 close_box :: proc() {
 	b := pop(&g_boxes)
 	if b.kind == .Grid {
+		// Empty cells fill up the last row: Clay takes percentages of the width without the
+		// gaps between the children, so a shorter row would get wider cells.
+		if b.count > 0 && b.count % b.columns != 0 {
+			for _ in 0 ..< b.columns - b.count % b.columns {
+				w := clay.SizingPercent(1 / f32(b.columns))
+				if clay.UI()({layout = {sizing = {w, clay.SizingFit()}}}) {}
+			}
+		}
 		if b.count > 0 {clay._CloseElement()} // last row
 		g_grid_cells[b.id.id] = b.count
 	}

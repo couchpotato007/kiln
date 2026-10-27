@@ -158,15 +158,8 @@ icon_element :: proc(ic: Icon, style: TextStyle, color: Color) {
 	}
 }
 
-// An image multiplied by a color, drawn by the backends for Clay's custom elements. (An image
-// element's background color would also be drawn as a rectangle behind it.)
-@(private)
-TintedImage :: struct {
-	handle: rawptr,
-	tint:   Color,
-}
-
-// An image element of `size` pixels; `tinted` draws it multiplied by `tint`.
+// An image element of `size` pixels; `tinted` draws it multiplied by `tint`. Tinted images are
+// painted, since an image element's background color would also be drawn as a rectangle behind it.
 @(private)
 image_element :: proc(handle: rawptr, size: [2]f32, tint: Color, tinted: bool) {
 	if handle == nil {return}
@@ -174,9 +167,9 @@ image_element :: proc(handle: rawptr, size: [2]f32, tint: Color, tinted: bool) {
 		layout = {sizing = {clay.SizingFixed(size.x), clay.SizingFixed(size.y)}},
 	}
 	if tinted {
-		t := new(TintedImage, context.temp_allocator) // lives until the frame is drawn
-		t^ = {handle, tint}
-		decl.custom = {customData = t}
+		p := painter()
+		paint_image(p, {handle = handle}, {}, size, tint)
+		decl.custom = paint(p)
 	} else {
 		decl.image = {imageData = handle}
 	}

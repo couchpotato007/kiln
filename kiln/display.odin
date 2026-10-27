@@ -34,11 +34,7 @@ TextCut :: struct {
 	width: f32,
 	hash:  u32,
 	len:   int, // bytes of the text that are shown before "…"; -1 = all of it
-	frame: u64,
 }
-
-@(private)
-g_cuts: map[u32]TextCut
 
 @(private)
 text_cut :: proc(s: string, style: TextStyle, tone: Tone) {
@@ -50,9 +46,9 @@ text_cut :: proc(s: string, style: TextStyle, tone: Tone) {
 
 	hash: u32 = 2166136261
 	for b in transmute([]u8)s {hash = (hash ~ u32(b)) * 16777619}
-	cut, ok := g_cuts[eid.id]
-	if !ok || cut.width != avail || cut.hash != hash {
-		cut = {width = avail, hash = hash, len = -1}
+	cut, created := widget_state(eid, TextCut)
+	if created || cut.width != avail || cut.hash != hash {
+		cut^ = {width = avail, hash = hash, len = -1}
 		if full > avail + 0.5 {
 			// The longest rune prefix that fits together with "…".
 			room := avail - measure(ELLIPSIS, style)
@@ -66,9 +62,6 @@ text_cut :: proc(s: string, style: TextStyle, tone: Tone) {
 			cut.len = ends[lo]
 		}
 	}
-	cut.frame = g_frame
-	g_cuts[eid.id] = cut
-
 	shown := s
 	if cut.len >= 0 {shown = strings.concatenate({s[:cut.len], ELLIPSIS}, context.temp_allocator)}
 	style_cfg := font(style, tone_color(tone))

@@ -81,6 +81,18 @@ key_pressed :: proc(key: Key) -> bool {
 	return g_focus == 0 && key in g_in.keys
 }
 
+Modifier :: enum {
+	Shift,
+	Ctrl, // Ctrl, or Cmd on macOS
+}
+
+// The modifier keys held down in this frame: `if kiln.key_pressed(.Z) && .Ctrl in kiln.modifiers()`.
+modifiers :: proc() -> (m: bit_set[Modifier]) {
+	if g_in.shift {m += {.Shift}}
+	if g_in.ctrl {m += {.Ctrl}}
+	return
+}
+
 // ---------------------------------------------------------------------------
 // Input, filled by the backend once per frame
 // ---------------------------------------------------------------------------
@@ -105,9 +117,31 @@ Key :: enum {
 	Escape,
 	Tab,
 	A,
+	B,
 	C,
+	D,
+	E,
+	F,
+	G,
+	H,
+	I,
+	J,
+	K,
+	L,
+	M,
+	N,
+	O,
+	P,
+	Q,
+	R,
+	S,
+	T,
+	U,
 	V,
+	W,
 	X,
+	Y,
+	Z,
 	Equal,
 	Minus,
 	Zero,
@@ -200,6 +234,7 @@ app_update :: proc(a: App($Model, $Msg), model: ^Model, msgs: [dynamic]Msg) {
 
 @(private)
 frame_begin :: proc(input: Input, cfg: Config) {
+	g_pointer_delta = g_frame > 0 ? input.mouse - g_in.mouse : {}
 	g_in = input
 	g_frame += 1
 

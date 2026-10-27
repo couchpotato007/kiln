@@ -78,7 +78,10 @@ package kiln
 //    These building blocks make them behave like kiln's own:
 //
 //      id, sub_id          stable ids (`id` counts equal labels; `sub_id` for parts of a widget)
-//      interact            hover / press / click of an element, call before declaring it
+//      interact            hover / press / click of an element, call before declaring it; also the
+//                          pointer position in it, its movement and the start / end of a drag
+//      widget_state        a ^T per element that kiln keeps between frames (a drag in progress)
+//      painter, paint      lines, circles and images drawn into an element (`custom = kiln.paint(p)`)
 //      set_last            makes `clicked`, `hovered`, `tooltip`, `context_menu` refer to it
 //      tooltip_on          a tooltip for any element, e.g. one bar of a chart
 //      anim                smooth values for hover fades and transitions
